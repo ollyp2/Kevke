@@ -1,78 +1,10 @@
-// TIMER FUNCTIONS
-var activeTimers = [];
-var expiredTimers = [];
-var timerIntervals = {};
-var timerIdCounter = 0;
-var lastTimerConfig = null;
-var notificationAsked = false;
-var timeVisible = true;
-
-function requestNotification() {
-    if (notificationAsked) return;
-    if ("Notification" in window && Notification.permission === "default") {
-        notificationAsked = true;
-        Notification.requestPermission().then(function(permission) {
-            if (permission === "granted") {
-                console.log('Notifications enabled!');
-            }
-        });
-    }
-}
-
-function showNotification(title, body) {
-    console.log('Trying to show notification:', title, body);
-    console.log('Notification permission:', Notification.permission);
-
-    if ("Notification" in window) {
-        if (Notification.permission === "granted") {
-            try {
-                var notification = new Notification(title, {
-                    body: body,
-                    requireInteraction: true,
-                    tag: 'timer-' + Date.now()
-                });
-                console.log('Notification created successfully');
-            } catch (e) {
-                console.error('Notification error:', e);
-            }
-        } else if (Notification.permission === "default") {
-            console.log('Notification permission not granted yet');
-        } else {
-            console.log('Notification permission denied');
-        }
-    } else {
-        console.log('Notifications not supported in this browser');
-    }
-}
-
-function updateClock() {
-    if (!timeVisible) return;
-    var now = new Date();
-    document.getElementById('dashTime').textContent = now.toLocaleTimeString('en-US', {
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-        hour12: false
-    });
-    document.getElementById('dashDate').textContent = now.toLocaleDateString('en-US', {
-        weekday: 'long',
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric'
-    });
-}
-
-function toggleTimeVisibility() {
-    timeVisible = !timeVisible;
-    var timeEl = document.getElementById('dashTime');
-    if (timeVisible) {
-        timeEl.classList.remove('hidden');
-        updateClock();
-    } else {
-        timeEl.classList.add('hidden');
-        timeEl.textContent = '--:--:--';
-    }
-}
+/**
+ * TIMER-UI.JS
+ * Timer UI components - modal, active timers display, expired timers display
+ *
+ * Dependencies: timer-core.js, ui.js
+ * Used by: main.js
+ */
 
 function updateActiveTimersDisplay() {
     var display = document.getElementById('activeTimersDisplay');
@@ -174,126 +106,6 @@ function updateExpiredTimersDisplay() {
     });
 }
 
-function restartExpiredTimer(index) {
-    var timer = expiredTimers[index];
-    if (timer.type === 'countdown') {
-        var h = Math.floor(timer.duration / 3600);
-        var m = Math.floor((timer.duration % 3600) / 60);
-        var s = timer.duration % 60;
-        startTimer('countdown', h + ':' + m + ':' + s, timer.title, timer.description);
-    } else {
-        startTimer('alarm', timer.target, timer.title, timer.description);
-    }
-    dismissExpiredTimer(index);
-}
-
-function dismissExpiredTimer(index) {
-    expiredTimers.splice(index, 1);
-    updateExpiredTimersDisplay();
-}
-
-function dismissAllExpiredTimers() {
-    expiredTimers = [];
-    updateExpiredTimersDisplay();
-}
-
-function updateTimerCountdown(timerId) {
-    var timer = activeTimers.find(function(t) { return t.id === timerId; });
-    if (!timer) return;
-
-    var now = new Date();
-    var countdownEl = document.getElementById('timer-countdown-' + timerId);
-    if (!countdownEl) return;
-
-    if (timer.type === 'countdown') {
-        var elapsed = Math.floor((now - timer.start) / 1000);
-        var remaining = timer.duration - elapsed;
-
-        if (remaining <= 0) {
-            var notifBody = timer.description || 'Dein Countdown-Timer ist abgelaufen.';
-            showNotification(timer.title, notifBody);
-
-            expiredTimers.push(timer);
-            stopTimer(timerId);
-            updateExpiredTimersDisplay();
-            return;
-        }
-
-        var h = Math.floor(remaining / 3600);
-        var m = Math.floor((remaining % 3600) / 60);
-        var s = remaining % 60;
-        countdownEl.textContent = h.toString().padStart(2, '0') + ':' +
-                                 m.toString().padStart(2, '0') + ':' +
-                                 s.toString().padStart(2, '0');
-    } else if (timer.type === 'alarm') {
-        var target = new Date(timer.target);
-        if (now >= target) {
-            var notifBody = timer.description || 'Deine Alarmzeit wurde erreicht.';
-            showNotification(timer.title, notifBody);
-
-            expiredTimers.push(timer);
-            stopTimer(timerId);
-            updateExpiredTimersDisplay();
-            return;
-        }
-
-        var diff = Math.floor((target - now) / 1000);
-        var h = Math.floor(diff / 3600);
-        var m = Math.floor((diff % 3600) / 60);
-        var s = diff % 60;
-        countdownEl.textContent = h.toString().padStart(2, '0') + ':' +
-                                 m.toString().padStart(2, '0') + ':' +
-                                 s.toString().padStart(2, '0');
-    }
-}
-
-function startTimer(type, value, title, description) {
-    var timerId = timerIdCounter++;
-    var timer = {
-        id: timerId,
-        type: type,
-        title: title || (type === 'countdown' ? 'Countdown' : 'Alarm'),
-        description: description || ''
-    };
-
-    if (type === 'countdown') {
-        var parts = value.split(':');
-        var hours = parseInt(parts[0]) || 0;
-        var minutes = parseInt(parts[1]) || 0;
-        var seconds = parseInt(parts[2]) || 0;
-        timer.duration = hours * 3600 + minutes * 60 + seconds;
-        timer.start = new Date();
-    } else {
-        timer.target = value;
-    }
-
-    activeTimers.push(timer);
-
-    timerIntervals[timerId] = setInterval(function() {
-        updateTimerCountdown(timerId);
-    }, 1000);
-
-    updateActiveTimersDisplay();
-    updateTimerCountdown(timerId);
-
-    var notifTitle = timer.title;
-    var notifBody = timer.description ? timer.description : (type === 'countdown' ? 'Countdown-Timer gestartet' : 'Alarm gesetzt');
-    showNotification(notifTitle, notifBody);
-    requestNotification();
-
-    lastTimerConfig = { type: type, value: value, title: title, description: description };
-}
-
-function stopTimer(timerId) {
-    if (timerIntervals[timerId]) {
-        clearInterval(timerIntervals[timerId]);
-        delete timerIntervals[timerId];
-    }
-
-    activeTimers = activeTimers.filter(function(t) { return t.id !== timerId; });
-    updateActiveTimersDisplay();
-}
-
 function openTimerModal() {
     var activeTimersHtml = '';
     if (activeTimers.length > 0) {
@@ -318,7 +130,7 @@ function openTimerModal() {
         '<div class="form-group"><label class="form-label">Dauer (HH:MM:SS)</label>' +
         '<div class="timer-inputs">' +
         '<div class="timer-input-group"><input type="number" class="form-input" id="hoursInput" placeholder="HH" min="0" max="23" value="0"></div>' +
-        '<div class="timer-input-group"><input type="number" class="form-input" id="minutesInput" placeholder="MM" min="0" max="59" value="5"></div>' +
+        '<div class="timer-input-group"><input type="number" class="form-input" id="minutesInput" placeholder="MM" min="0" max="59" value="' + CONFIG.TIMER.DEFAULT_COUNTDOWN_MINUTES + '"></div>' +
         '<div class="timer-input-group"><input type="number" class="form-input" id="secondsInput" placeholder="SS" min="0" max="59" value="0"></div>' +
         '</div></div></div>' +
         '<div id="alarmContent" style="display:none">' +

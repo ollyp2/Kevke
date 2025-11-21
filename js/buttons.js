@@ -1,4 +1,11 @@
-// BUTTON MANAGEMENT
+/**
+ * BUTTONS.JS
+ * Navigation buttons management - add, edit, delete, drag-and-drop reordering
+ *
+ * Dependencies: ui.js, storage.js
+ * Used by: main.js
+ */
+
 var draggedButtonIndex = null;
 
 function updateAddButtonVisibility() {

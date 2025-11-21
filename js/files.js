@@ -1,4 +1,11 @@
-// FILE MANAGEMENT
+/**
+ * FILES.JS
+ * File upload and management - PDF, PNG, JPG with drag-and-drop
+ *
+ * Dependencies: storage.js, config.js
+ * Used by: main.js
+ */
+
 function renderFiles() {
     var filesDisplay = document.getElementById('filesDisplay');
     filesDisplay.innerHTML = '';

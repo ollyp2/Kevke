@@ -1,4 +1,11 @@
-// EVENT LISTENERS & INITIALIZATION
+/**
+ * MAIN.JS
+ * Application initialization and event listeners
+ *
+ * Dependencies: All other modules
+ * This is the entry point - loads data and sets up all event handlers
+ */
+
 document.addEventListener('DOMContentLoaded', function() {
     // Event Listeners
     document.getElementById('calcToggle').onclick = toggleCalculator;

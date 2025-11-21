@@ -103,17 +103,31 @@
         </div>
     </div>
 
-    <!-- JavaScript Modules -->
+    <!-- JavaScript Modules - Load order matters! -->
+    <!-- Config first -->
+    <script src="js/config.js"></script>
+
+    <!-- Core modules -->
     <script src="js/storage.js"></script>
     <script src="js/ui.js"></script>
+
+    <!-- Feature modules -->
     <script src="js/calculator.js"></script>
     <script src="js/dateCalculator.js"></script>
     <script src="js/averageCalculator.js"></script>
-    <script src="js/timer.js"></script>
+
+    <!-- Timer modules (notifications → core → ui) -->
+    <script src="js/timer-notifications.js"></script>
+    <script src="js/timer-core.js"></script>
+    <script src="js/timer-ui.js"></script>
+
+    <!-- Other features -->
     <script src="js/offers.js"></script>
     <script src="js/notes.js"></script>
     <script src="js/buttons.js"></script>
     <script src="js/files.js"></script>
+
+    <!-- Main init last -->
     <script src="js/main.js"></script>
 </body>
 </html>

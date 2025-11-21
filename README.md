@@ -6,16 +6,20 @@ A modular, feature-rich productivity workspace with timer, calculator, notes, of
 
 ```
 Kevke/
-├── index.html              # Main HTML structure
+├── index.html              # Main HTML structure (130 lines)
+├── .gitignore              # Git ignore rules
 ├── css/
-│   └── styles.css          # All CSS styles
+│   └── styles.css          # All CSS styles (32KB)
 └── js/
+    ├── config.js           # Configuration & constants
     ├── storage.js          # Data management & localStorage
     ├── ui.js               # Modal & UI helpers
     ├── calculator.js       # Calculator widget
     ├── dateCalculator.js   # Date difference calculator
     ├── averageCalculator.js# Average calculator (Ø)
-    ├── timer.js            # Timer & Alarm functionality
+    ├── timer-notifications.js # Timer notifications
+    ├── timer-core.js       # Timer core logic
+    ├── timer-ui.js         # Timer UI & modal
     ├── offers.js           # Offers/Angebote tracking
     ├── notes.js            # Notes management
     ├── buttons.js          # Navigation buttons
@@ -54,14 +58,22 @@ Each feature is split into its own module for:
 
 Need to modify a specific feature? Here's where to look:
 
-| Feature | File |
-|---------|------|
-| Calculator logic | `js/calculator.js` |
-| Timer functionality | `js/timer.js` |
-| Notes system | `js/notes.js` |
-| Offers tracking | `js/offers.js` |
-| Styles | `css/styles.css` |
-| Data storage | `js/storage.js` |
+| Feature | File | Lines |
+|---------|------|-------|
+| Calculator logic | `js/calculator.js` | 140 |
+| Timer notifications | `js/timer-notifications.js` | 47 |
+| Timer core logic | `js/timer-core.js` | 180 |
+| Timer UI | `js/timer-ui.js` | 225 |
+| Notes system | `js/notes.js` | 157 |
+| Offers tracking | `js/offers.js` | 214 |
+| Config/Constants | `js/config.js` | 47 |
+| Styles | `css/styles.css` | 956 |
+| Data storage | `js/storage.js` | 67 |
+
+**Each file has a header comment explaining:**
+- What it does
+- What it depends on
+- What uses it
 
 ## 💾 Data Storage
 

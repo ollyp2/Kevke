@@ -1,4 +1,11 @@
-// AVERAGE CALCULATOR FUNCTIONS
+/**
+ * AVERAGECALCULATOR.JS
+ * Average calculator (Ø) - calculate average of multiple values
+ *
+ * Dependencies: ui.js, storage.js
+ * Used by: main.js
+ */
+
 function calculateAverage() {
     if (avgValues.length === 0) return 0;
     var sum = avgValues.reduce(function(acc, val) { return acc + val; }, 0);

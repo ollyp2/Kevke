@@ -1,4 +1,11 @@
-// CALCULATOR FUNCTIONS
+/**
+ * CALCULATOR.JS
+ * Calculator widget with keyboard support
+ *
+ * Dependencies: ui.js (for modal closing)
+ * Used by: main.js
+ */
+
 var calcActive = false;
 var calcCurrentValue = '0';
 var calcPreviousValue = '';

@@ -1,4 +1,11 @@
-// MODAL & UI HELPERS
+/**
+ * UI.JS
+ * Modal and UI helper functions
+ *
+ * Dependencies: calculator.js (for closing calc on modal open)
+ * Used by: All modules that show modals
+ */
+
 function showModal(title, body) {
     // Close calculator when opening modal
     if (calcActive) {

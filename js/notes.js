@@ -1,4 +1,11 @@
-// NOTES MANAGEMENT
+/**
+ * NOTES.JS
+ * Notes management - create, edit, delete, drag-and-drop reordering
+ *
+ * Dependencies: ui.js, storage.js
+ * Used by: main.js
+ */
+
 var currentNoteIndex = -1;
 var draggedNoteIndex = null;
 

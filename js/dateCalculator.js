@@ -1,4 +1,11 @@
-// DATE CALCULATOR FUNCTIONS
+/**
+ * DATECALCULATOR.JS
+ * Date difference calculator - calculates days, weeks, months, years between dates
+ *
+ * Dependencies: ui.js (showModal, closeModal)
+ * Used by: main.js
+ */
+
 function openDateCalcModal() {
     showModal('Datumsrechner',
         '<div class="form-group"><label class="form-label">Zieldatum</label>' +

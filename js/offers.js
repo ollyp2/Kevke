@@ -1,4 +1,11 @@
-// OFFERS FUNCTIONS
+/**
+ * OFFERS.JS
+ * Offers/Angebote tracking with status indicators (active, expiring, expired, future)
+ *
+ * Dependencies: ui.js, storage.js, config.js
+ * Used by: main.js
+ */
+
 function getOfferStatus(offer) {
     var now = new Date();
     now.setHours(0, 0, 0, 0);
@@ -17,8 +24,8 @@ function getOfferStatus(offer) {
 
     if (diffDays < 0) {
         return { status: 'expired', text: 'Angebot ist abgelaufen' };
-    } else if (diffDays <= 7) {
-        return { status: 'expiring', text: 'Angebot läuft innerhalb der nächsten 7 Tage ab' };
+    } else if (diffDays <= CONFIG.OFFERS.EXPIRING_DAYS_THRESHOLD) {
+        return { status: 'expiring', text: 'Angebot läuft innerhalb der nächsten ' + CONFIG.OFFERS.EXPIRING_DAYS_THRESHOLD + ' Tage ab' };
     } else {
         return { status: 'active', text: 'Aktives Angebot' };
     }
