@@ -128,13 +128,21 @@ function openNoteEdit(index) {
     document.getElementById('cancelNoteBtn').onclick = closeModal;
     setTimeout(function() {
         var titleInput = document.getElementById('titleInput');
+        var editTextarea = document.getElementById('editTextarea');
+
         titleInput.addEventListener('keypress', function(e) {
             if (e.key === 'Enter') {
                 e.preventDefault();
-                document.getElementById('editTextarea').focus();
+                editTextarea.focus();
             }
         });
-        document.getElementById('editTextarea').focus();
+        editTextarea.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                saveNoteEdit();
+            }
+        });
+        editTextarea.focus();
     }, CONFIG.UI.FOCUS_DELAY_MS);
 }
 

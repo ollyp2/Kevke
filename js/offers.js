@@ -141,6 +141,12 @@ function openAddOfferModal() {
                 offerDescription.focus();
             }
         });
+        offerDescription.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                saveNewOffer();
+            }
+        });
     }, CONFIG.UI.FOCUS_DELAY_MS);
 }
 
@@ -215,6 +221,12 @@ function editOffer(index) {
             if (e.key === 'Enter') {
                 e.preventDefault();
                 offerDescription.focus();
+            }
+        });
+        offerDescription.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                updateOffer(index);
             }
         });
     }, CONFIG.UI.FOCUS_DELAY_MS);
