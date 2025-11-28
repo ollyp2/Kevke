@@ -378,6 +378,11 @@
         }
         body.edit-mode .add-offer-btn, .add-offer-btn.show-always { display: inline-block; }
         .add-offer-btn:hover { background: rgba(60, 180, 60, 0.3); transform: scale(1.05); }
+        #offersTableContainer {
+            max-height: 400px;
+            overflow-y: auto;
+            overflow-x: hidden;
+        }
         .offers-table {
             width: 100%;
             border-collapse: collapse;

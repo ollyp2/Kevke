@@ -116,7 +116,15 @@ function openAddOfferModal() {
         '</div>'
     );
     document.getElementById('saveOfferBtn').onclick = saveNewOffer;
-    setTimeout(function() { document.getElementById('offerTitle').focus(); }, 100);
+    setTimeout(function() {
+        document.getElementById('offerTitle').focus();
+        document.getElementById('offerTitle').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') { e.preventDefault(); document.getElementById('offerStart').focus(); }
+        });
+        document.getElementById('offerEnd').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') { e.preventDefault(); document.getElementById('offerDescription').focus(); }
+        });
+    }, 100);
 }
 
 function saveNewOffer() {
@@ -167,7 +175,15 @@ function editOffer(index) {
         '</div>'
     );
     document.getElementById('updateOfferBtn').onclick = function() { updateOffer(index); };
-    setTimeout(function() { document.getElementById('offerTitle').focus(); }, 100);
+    setTimeout(function() {
+        document.getElementById('offerTitle').focus();
+        document.getElementById('offerTitle').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') { e.preventDefault(); document.getElementById('offerStart').focus(); }
+        });
+        document.getElementById('offerEnd').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') { e.preventDefault(); document.getElementById('offerDescription').focus(); }
+        });
+    }, 100);
 }
 
 function updateOffer(index) {

@@ -17,7 +17,13 @@ function openDateCalcModal() {
         '</div>'
     );
     document.getElementById('calcDateBtn').onclick = calculateDateDifference;
-    setTimeout(function() { document.getElementById('targetDate').focus(); }, 100);
+    setTimeout(function() {
+        var targetDate = document.getElementById('targetDate');
+        targetDate.focus();
+        targetDate.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') { e.preventDefault(); calculateDateDifference(); }
+        });
+    }, 100);
 }
 
 function calculateDateDifference() {

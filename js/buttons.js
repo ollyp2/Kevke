@@ -108,7 +108,15 @@ function addNewButton() {
     );
     document.getElementById('saveBtnBtn').onclick = saveNewButton;
     document.getElementById('cancelBtnBtn').onclick = closeModal;
-    setTimeout(function() { document.getElementById('btnName').focus(); }, 100);
+    setTimeout(function() {
+        document.getElementById('btnName').focus();
+        document.getElementById('btnName').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') { e.preventDefault(); document.getElementById('btnUrl').focus(); }
+        });
+        document.getElementById('btnUrl').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') { e.preventDefault(); saveNewButton(); }
+        });
+    }, 100);
 }
 
 function saveNewButton() {
@@ -132,7 +140,15 @@ function editButton(index) {
     );
     document.getElementById('saveEditBtn').onclick = function() { updateButton(index); };
     document.getElementById('cancelEditBtn').onclick = closeModal;
-    setTimeout(function() { document.getElementById('btnName').focus(); }, 100);
+    setTimeout(function() {
+        document.getElementById('btnName').focus();
+        document.getElementById('btnName').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') { e.preventDefault(); document.getElementById('btnUrl').focus(); }
+        });
+        document.getElementById('btnUrl').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') { e.preventDefault(); updateButton(index); }
+        });
+    }, 100);
 }
 
 function updateButton(index) {

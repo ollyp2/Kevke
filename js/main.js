@@ -16,6 +16,12 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('addBtn').onclick = addNewButton;
     document.getElementById('addOfferBtn').onclick = openAddOfferModal;
     document.getElementById('createBtn').onclick = createNote;
+    document.getElementById('noteInput').addEventListener('keypress', function(e) {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            createNote();
+        }
+    });
     document.getElementById('timeToggle').onclick = toggleTimeVisibility;
     document.getElementById('fileHeader').onclick = toggleUpload;
     document.getElementById('uploadArea').onclick = function() {

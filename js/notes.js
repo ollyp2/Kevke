@@ -126,7 +126,13 @@ function openNoteEdit(index) {
         '<div class="modal-actions"><button class="action-button save-button" id="saveNoteBtn">Save</button><button class="action-button cancel-button" id="cancelNoteBtn">Cancel</button></div>';
     document.getElementById('saveNoteBtn').onclick = saveNoteEdit;
     document.getElementById('cancelNoteBtn').onclick = closeModal;
-    setTimeout(function() { document.getElementById('editTextarea').focus(); }, 100);
+    setTimeout(function() {
+        var titleInput = document.getElementById('titleInput');
+        titleInput.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') { e.preventDefault(); document.getElementById('editTextarea').focus(); }
+        });
+        document.getElementById('editTextarea').focus();
+    }, 100);
 }
 
 function saveNoteEdit() {
