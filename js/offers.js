@@ -142,7 +142,7 @@ function openAddOfferModal() {
             }
         });
         offerDescription.addEventListener('keypress', function(e) {
-            if (e.key === 'Enter') {
+            if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
                 saveNewOffer();
             }
@@ -224,7 +224,7 @@ function editOffer(index) {
             }
         });
         offerDescription.addEventListener('keypress', function(e) {
-            if (e.key === 'Enter') {
+            if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
                 updateOffer(index);
             }
