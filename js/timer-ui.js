@@ -191,16 +191,34 @@ function openTimerModal() {
         var secondsInput = document.getElementById('secondsInput');
 
         timerTitle.addEventListener('keypress', function(e) {
-            if (e.key === 'Enter') { e.preventDefault(); timerDescription.focus(); }
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                timerDescription.focus();
+            }
+        });
+        timerDescription.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                hoursInput.focus();
+            }
         });
         hoursInput.addEventListener('keypress', function(e) {
-            if (e.key === 'Enter') { e.preventDefault(); minutesInput.focus(); }
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                minutesInput.focus();
+            }
         });
         minutesInput.addEventListener('keypress', function(e) {
-            if (e.key === 'Enter') { e.preventDefault(); secondsInput.focus(); }
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                secondsInput.focus();
+            }
         });
         secondsInput.addEventListener('keypress', function(e) {
-            if (e.key === 'Enter') { e.preventDefault(); document.getElementById('startTimerBtn').click(); }
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                document.getElementById('startTimerBtn').click();
+            }
         });
 
         // Alarm tab
@@ -209,12 +227,24 @@ function openTimerModal() {
         var alarmTimeInput = document.getElementById('alarmTimeInput');
 
         alarmTitle.addEventListener('keypress', function(e) {
-            if (e.key === 'Enter') { e.preventDefault(); alarmDescription.focus(); }
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                alarmDescription.focus();
+            }
+        });
+        alarmDescription.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                alarmTimeInput.focus();
+            }
         });
         alarmTimeInput.addEventListener('keypress', function(e) {
-            if (e.key === 'Enter') { e.preventDefault(); document.getElementById('startTimerBtn').click(); }
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                document.getElementById('startTimerBtn').click();
+            }
         });
-    }, 100);
+    }, CONFIG.UI.FOCUS_DELAY_MS);
 }
 
 function switchTimerTab(tab) {

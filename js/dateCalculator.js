@@ -21,9 +21,12 @@ function openDateCalcModal() {
         var targetDate = document.getElementById('targetDate');
         targetDate.focus();
         targetDate.addEventListener('keypress', function(e) {
-            if (e.key === 'Enter') { e.preventDefault(); calculateDateDifference(); }
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                calculateDateDifference();
+            }
         });
-    }, 100);
+    }, CONFIG.UI.FOCUS_DELAY_MS);
 }
 
 function calculateDateDifference() {

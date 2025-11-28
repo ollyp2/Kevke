@@ -129,10 +129,13 @@ function openNoteEdit(index) {
     setTimeout(function() {
         var titleInput = document.getElementById('titleInput');
         titleInput.addEventListener('keypress', function(e) {
-            if (e.key === 'Enter') { e.preventDefault(); document.getElementById('editTextarea').focus(); }
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                document.getElementById('editTextarea').focus();
+            }
         });
         document.getElementById('editTextarea').focus();
-    }, 100);
+    }, CONFIG.UI.FOCUS_DELAY_MS);
 }
 
 function saveNoteEdit() {

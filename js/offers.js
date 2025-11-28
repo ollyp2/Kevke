@@ -117,14 +117,31 @@ function openAddOfferModal() {
     );
     document.getElementById('saveOfferBtn').onclick = saveNewOffer;
     setTimeout(function() {
-        document.getElementById('offerTitle').focus();
-        document.getElementById('offerTitle').addEventListener('keypress', function(e) {
-            if (e.key === 'Enter') { e.preventDefault(); document.getElementById('offerStart').focus(); }
+        var offerTitle = document.getElementById('offerTitle');
+        var offerStart = document.getElementById('offerStart');
+        var offerEnd = document.getElementById('offerEnd');
+        var offerDescription = document.getElementById('offerDescription');
+
+        offerTitle.focus();
+        offerTitle.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                offerStart.focus();
+            }
         });
-        document.getElementById('offerEnd').addEventListener('keypress', function(e) {
-            if (e.key === 'Enter') { e.preventDefault(); document.getElementById('offerDescription').focus(); }
+        offerStart.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                offerEnd.focus();
+            }
         });
-    }, 100);
+        offerEnd.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                offerDescription.focus();
+            }
+        });
+    }, CONFIG.UI.FOCUS_DELAY_MS);
 }
 
 function saveNewOffer() {
@@ -176,14 +193,31 @@ function editOffer(index) {
     );
     document.getElementById('updateOfferBtn').onclick = function() { updateOffer(index); };
     setTimeout(function() {
-        document.getElementById('offerTitle').focus();
-        document.getElementById('offerTitle').addEventListener('keypress', function(e) {
-            if (e.key === 'Enter') { e.preventDefault(); document.getElementById('offerStart').focus(); }
+        var offerTitle = document.getElementById('offerTitle');
+        var offerStart = document.getElementById('offerStart');
+        var offerEnd = document.getElementById('offerEnd');
+        var offerDescription = document.getElementById('offerDescription');
+
+        offerTitle.focus();
+        offerTitle.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                offerStart.focus();
+            }
         });
-        document.getElementById('offerEnd').addEventListener('keypress', function(e) {
-            if (e.key === 'Enter') { e.preventDefault(); document.getElementById('offerDescription').focus(); }
+        offerStart.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                offerEnd.focus();
+            }
         });
-    }, 100);
+        offerEnd.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                offerDescription.focus();
+            }
+        });
+    }, CONFIG.UI.FOCUS_DELAY_MS);
 }
 
 function updateOffer(index) {
