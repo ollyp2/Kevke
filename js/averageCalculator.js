@@ -43,11 +43,12 @@ function renderAvgModal() {
             input.focus();
             input.addEventListener('keypress', function(e) {
                 if (e.key === 'Enter') {
+                    e.preventDefault();
                     addAvgValue();
                 }
             });
         }
-    }, 100);
+    }, CONFIG.UI.FOCUS_DELAY_MS);
 }
 
 function openAvgModal() {
