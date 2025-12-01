@@ -11,6 +11,8 @@ var calcCurrentValue = '0';
 var calcPreviousValue = '';
 var calcOperation = null;
 var calcNewNumber = true;
+var calcHistory = [];
+var calcHistoryVisible = false;
 
 function toggleCalculator() {
     calcActive = !calcActive;
@@ -26,7 +28,12 @@ function toggleCalculator() {
 }
 
 function updateCalcDisplay() {
-    document.getElementById('calcDisplay').textContent = calcCurrentValue;
+    var displayText = calcCurrentValue;
+    if (calcOperation && calcPreviousValue) {
+        var opSymbol = calcOperation === '*' ? '×' : calcOperation === '-' ? '−' : calcOperation;
+        displayText = calcPreviousValue + ' ' + opSymbol + ' ' + (calcNewNumber ? '' : calcCurrentValue);
+    }
+    document.getElementById('calcDisplay').textContent = displayText;
 }
 
 function calcClear() {
@@ -75,17 +82,45 @@ function calcExecute() {
     var prev = parseFloat(calcPreviousValue);
     var curr = parseFloat(calcCurrentValue);
     var result = 0;
+    var opSymbol = calcOperation === '*' ? '×' : calcOperation === '-' ? '−' : calcOperation;
     switch (calcOperation) {
         case '+': result = prev + curr; break;
         case '-': result = prev - curr; break;
         case '*': result = prev * curr; break;
         case '/': result = curr !== 0 ? prev / curr : 0; break;
     }
+
+    // Add to history
+    var historyEntry = calcPreviousValue + ' ' + opSymbol + ' ' + calcCurrentValue + ' = ' + result;
+    calcHistory.unshift(historyEntry);
+    if (calcHistory.length > 10) calcHistory.pop(); // Keep only last 10
+    updateCalcHistory();
+
     calcCurrentValue = result.toString();
     calcPreviousValue = '';
     calcOperation = null;
     calcNewNumber = true;
     updateCalcDisplay();
+}
+
+function toggleCalcHistory() {
+    calcHistoryVisible = !calcHistoryVisible;
+    var historyEl = document.getElementById('calcHistory');
+    if (calcHistoryVisible) {
+        historyEl.style.display = 'block';
+    } else {
+        historyEl.style.display = 'none';
+    }
+}
+
+function updateCalcHistory() {
+    var historyEl = document.getElementById('calcHistory');
+    if (!historyEl) return;
+    var html = '';
+    calcHistory.forEach(function(entry) {
+        html += '<div class="calc-history-item">' + entry + '</div>';
+    });
+    historyEl.innerHTML = html || '<div class="calc-history-empty">Keine Rechnungen</div>';
 }
 
 function handleCalcButton(btn) {

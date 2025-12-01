@@ -70,9 +70,13 @@ function renderOffers() {
         tableHtml += '<td>' + formattedEnd + '</td>';
         tableHtml += '</tr>';
 
-        if (offer.description) {
+        if (offer.description || offer.url) {
+            var descContent = offer.description || '';
+            if (offer.url) {
+                descContent += (descContent ? '<br><br>' : '') + '🔗 <a href="' + offer.url + '" target="_blank" class="offer-link" onclick="event.stopPropagation()">' + offer.url + '</a>';
+            }
             tableHtml += '<tr class="offer-description-row' + (isExpanded ? ' expanded' : '') + '">';
-            tableHtml += '<td colspan="4" class="offer-description-cell">' + offer.description + '</td>';
+            tableHtml += '<td colspan="4" class="offer-description-cell">' + descContent + '</td>';
             tableHtml += '</tr>';
         }
     });
@@ -101,13 +105,20 @@ function toggleOfferDescription(index) {
 }
 
 function openAddOfferModal() {
+    // Set default end date to far future (10 years from now)
+    var defaultEndDate = new Date();
+    defaultEndDate.setFullYear(defaultEndDate.getFullYear() + 10);
+    var defaultEndStr = defaultEndDate.toISOString().split('T')[0];
+
     showModal('Neues Angebot',
         '<div class="form-group"><label class="form-label">Titel (Angebot)</label>' +
         '<input type="text" class="form-input" id="offerTitle" placeholder="Angebots-Titel"></div>' +
         '<div class="form-group"><label class="form-label">Beginn</label>' +
         '<input type="date" class="form-input" id="offerStart"></div>' +
         '<div class="form-group"><label class="form-label">Ende</label>' +
-        '<input type="date" class="form-input" id="offerEnd"></div>' +
+        '<input type="date" class="form-input" id="offerEnd" value="' + defaultEndStr + '"></div>' +
+        '<div class="form-group"><label class="form-label">URL (optional)</label>' +
+        '<input type="url" class="form-input" id="offerUrl" placeholder="https://beispiel.de"></div>' +
         '<div class="form-group"><label class="form-label">Angebotsbeschreibung</label>' +
         '<textarea class="form-textarea" id="offerDescription" placeholder="Beschreibung des Angebots"></textarea></div>' +
         '<div class="modal-actions">' +
@@ -120,6 +131,7 @@ function openAddOfferModal() {
         var offerTitle = document.getElementById('offerTitle');
         var offerStart = document.getElementById('offerStart');
         var offerEnd = document.getElementById('offerEnd');
+        var offerUrl = document.getElementById('offerUrl');
         var offerDescription = document.getElementById('offerDescription');
 
         offerTitle.focus();
@@ -138,6 +150,12 @@ function openAddOfferModal() {
         offerEnd.addEventListener('keypress', function(e) {
             if (e.key === 'Enter') {
                 e.preventDefault();
+                offerUrl.focus();
+            }
+        });
+        offerUrl.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
                 offerDescription.focus();
             }
         });
@@ -154,6 +172,7 @@ function saveNewOffer() {
     var title = document.getElementById('offerTitle').value.trim();
     var start = document.getElementById('offerStart').value;
     var end = document.getElementById('offerEnd').value;
+    var url = document.getElementById('offerUrl').value.trim();
     var description = document.getElementById('offerDescription').value.trim();
 
     if (!title) {
@@ -173,6 +192,7 @@ function saveNewOffer() {
         title: title,
         start: start,
         end: end,
+        url: url,
         description: description
     });
 
@@ -190,6 +210,8 @@ function editOffer(index) {
         '<input type="date" class="form-input" id="offerStart" value="' + offer.start + '"></div>' +
         '<div class="form-group"><label class="form-label">Ende</label>' +
         '<input type="date" class="form-input" id="offerEnd" value="' + offer.end + '"></div>' +
+        '<div class="form-group"><label class="form-label">URL (optional)</label>' +
+        '<input type="url" class="form-input" id="offerUrl" value="' + (offer.url || '') + '" placeholder="https://beispiel.de"></div>' +
         '<div class="form-group"><label class="form-label">Angebotsbeschreibung</label>' +
         '<textarea class="form-textarea" id="offerDescription">' + (offer.description || '') + '</textarea></div>' +
         '<div class="modal-actions">' +
@@ -202,6 +224,7 @@ function editOffer(index) {
         var offerTitle = document.getElementById('offerTitle');
         var offerStart = document.getElementById('offerStart');
         var offerEnd = document.getElementById('offerEnd');
+        var offerUrl = document.getElementById('offerUrl');
         var offerDescription = document.getElementById('offerDescription');
 
         offerTitle.focus();
@@ -220,6 +243,12 @@ function editOffer(index) {
         offerEnd.addEventListener('keypress', function(e) {
             if (e.key === 'Enter') {
                 e.preventDefault();
+                offerUrl.focus();
+            }
+        });
+        offerUrl.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
                 offerDescription.focus();
             }
         });
@@ -236,6 +265,7 @@ function updateOffer(index) {
     var title = document.getElementById('offerTitle').value.trim();
     var start = document.getElementById('offerStart').value;
     var end = document.getElementById('offerEnd').value;
+    var url = document.getElementById('offerUrl').value.trim();
     var description = document.getElementById('offerDescription').value.trim();
 
     if (!title) {
@@ -255,6 +285,7 @@ function updateOffer(index) {
         title: title,
         start: start,
         end: end,
+        url: url,
         description: description
     };
 

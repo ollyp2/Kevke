@@ -25,6 +25,12 @@
         </div>
         <div class="content-wrapper">
             <div class="calculator-widget" id="calculator">
+                <div class="calc-header">
+                    <button class="calc-history-toggle" onclick="toggleCalcHistory()">📜 Verlauf</button>
+                </div>
+                <div class="calc-history" id="calcHistory" style="display:none;">
+                    <div class="calc-history-empty">Keine Rechnungen</div>
+                </div>
                 <div class="calc-display" id="calcDisplay">0</div>
                 <div class="calc-buttons">
                     <button class="calc-btn clear">C</button>
