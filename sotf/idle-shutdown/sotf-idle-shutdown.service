@@ -12,6 +12,7 @@ RestartSec=30
 # when you want to test with a shorter timeout.
 Environment=SOTF_IDLE_TIMEOUT_SECONDS=900
 Environment=SOTF_CHECK_INTERVAL_SECONDS=30
+Environment=SOTF_CPU_THRESHOLD_PCT=10
 Environment=SOTF_CONTAINER_NAME=sotf-server
 
 [Install]

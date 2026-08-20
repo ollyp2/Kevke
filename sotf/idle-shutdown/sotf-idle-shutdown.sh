@@ -2,57 +2,74 @@
 # Shuts the VM down when the Sons of the Forest server has been idle for
 # SOTF_IDLE_TIMEOUT_SECONDS.
 #
-# Idle detection: the SOTF dedicated server prints
-#   "Set target framerate to <n>"
-# once per second while nobody is connected. As soon as a player joins,
-# other log lines appear. So: whenever `docker logs --tail 1` still ends
-# on that line, the server is idle. We count how long that has been true
-# and shut the VM down once the threshold is crossed.
+# Idle detection: CPU usage of the container. An empty SOTF dedicated
+# server sits at ~1-5 % CPU (just periodic autosaves), a populated one
+# is well above 20 %. Log-parsing was tried first (matching a specific
+# "Set target framerate" transition) and turned out to be fragile — the
+# marker line does not always fire, and upstream image changes can
+# silently break the string match. `docker stats` is language-agnostic
+# and cannot be fooled by log-format drift.
 #
 # Flags / env:
 #   --dry-run                    log what would happen, do NOT poweroff
 #   SOTF_IDLE_TIMEOUT_SECONDS    idle threshold (default 900 = 15 min)
 #   SOTF_CHECK_INTERVAL_SECONDS  poll interval  (default 30)
+#   SOTF_CPU_THRESHOLD_PCT       "idle" if CPU% < this (default 10)
 #   SOTF_CONTAINER_NAME          container to watch (default sotf-server)
 
 set -euo pipefail
 
 IDLE_TIMEOUT="${SOTF_IDLE_TIMEOUT_SECONDS:-900}"
 CHECK_INTERVAL="${SOTF_CHECK_INTERVAL_SECONDS:-30}"
+CPU_THRESHOLD="${SOTF_CPU_THRESHOLD_PCT:-10}"
 CONTAINER_NAME="${SOTF_CONTAINER_NAME:-sotf-server}"
-IDLE_MARKER='Set target framerate'
 
 DRY_RUN=0
 for arg in "$@"; do
   case "$arg" in
     --dry-run) DRY_RUN=1 ;;
-    -h|--help)
-      sed -n '2,15p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,20p' "$0"; exit 0 ;;
     *) echo "unknown arg: $arg" >&2; exit 2 ;;
   esac
 done
 
 log() { printf '[sotf-idle-shutdown] %s\n' "$*"; }
 
-log "start: container=$CONTAINER_NAME idle_timeout=${IDLE_TIMEOUT}s interval=${CHECK_INTERVAL}s dry_run=$DRY_RUN"
+container_cpu_pct() {
+  # `docker stats --no-stream` prints one sample. Strip the trailing '%'.
+  # Empty output (container gone) → return -1 so the caller can react.
+  local raw
+  raw="$(docker stats --no-stream --format '{{.CPUPerc}}' "$CONTAINER_NAME" 2>/dev/null || true)"
+  raw="${raw%\%}"
+  if [[ -z "$raw" ]]; then
+    echo "-1"
+  else
+    echo "$raw"
+  fi
+}
+
+log "start: container=$CONTAINER_NAME idle_timeout=${IDLE_TIMEOUT}s interval=${CHECK_INTERVAL}s cpu_threshold=${CPU_THRESHOLD}% dry_run=$DRY_RUN"
 
 idle_seconds=0
 while true; do
-  if ! docker inspect -f '{{.State.Running}}' "$CONTAINER_NAME" 2>/dev/null | grep -q true; then
+  cpu="$(container_cpu_pct)"
+
+  if [[ "$cpu" == "-1" ]]; then
     log "container $CONTAINER_NAME not running; resetting idle counter"
     idle_seconds=0
     sleep "$CHECK_INTERVAL"
     continue
   fi
 
-  last_line="$(docker logs --tail 1 "$CONTAINER_NAME" 2>&1 || true)"
+  # bash cannot compare floats — awk does.
+  is_idle="$(awk -v c="$cpu" -v t="$CPU_THRESHOLD" 'BEGIN{ print (c+0 < t+0) ? 1 : 0 }')"
 
-  if [[ "$last_line" == *"$IDLE_MARKER"* ]]; then
+  if [[ "$is_idle" == "1" ]]; then
     idle_seconds=$(( idle_seconds + CHECK_INTERVAL ))
-    log "idle for ${idle_seconds}s / ${IDLE_TIMEOUT}s"
+    log "cpu=${cpu}% (< ${CPU_THRESHOLD}%) idle for ${idle_seconds}s / ${IDLE_TIMEOUT}s"
   else
     if (( idle_seconds > 0 )); then
-      log "activity detected, resetting idle counter (last line: ${last_line:0:80})"
+      log "cpu=${cpu}% (>= ${CPU_THRESHOLD}%) activity, resetting idle counter"
     fi
     idle_seconds=0
   fi

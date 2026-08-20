@@ -48,9 +48,9 @@ Everything below assumes the target user is `kradtke79`; override with
 4. **Set credentials**: `sudo nano /home/kradtke79/sotf/.env`, then
    `cd /home/kradtke79/sotf && docker compose up -d`.
 
-5. **Watch it come up**: `docker logs -f sotf-server`. When the server is
-   ready and idle you'll see `Set target framerate to 30` repeating — that
-   is the marker the idle-shutdown watches for.
+5. **Watch it come up**: `docker logs -f sotf-server`. Once the world
+   is loaded, `docker stats sotf-server` should sit at a few percent
+   CPU. That low-CPU state is what the idle-shutdown watches for.
 
 ## Operations
 
@@ -213,6 +213,9 @@ and `roles/logging.logWriter`. Overkill for a hobby game server.
   `compute.instances.start` on `sotf-server`. If it's a Cloud Function
   with the default runtime SA, that SA needs `roles/compute.instanceAdmin.v1`
   scoped to the VM (or, safer, a custom role with just `compute.instances.start`).
-- **Log-marker fragility**: idle detection keys on the string
-  `Set target framerate`. If the upstream image changes its idle log
-  line, edit `IDLE_MARKER` in `idle-shutdown/sotf-idle-shutdown.sh`.
+- **Idle detection uses container CPU%**, via `docker stats`,
+  threshold `SOTF_CPU_THRESHOLD_PCT` (default 10 %). An earlier
+  log-string version (matching `Set target framerate: 5` as the last
+  transition line) turned out to be fragile — the marker does not
+  always fire, which once left a live VM running 11 hours with nobody
+  on it. CPU is language-agnostic and survives image upgrades.
