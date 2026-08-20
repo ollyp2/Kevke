@@ -1,0 +1,18 @@
+[Unit]
+Description=Shut the VM down when the Sons of the Forest server is idle
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/sotf-idle-shutdown.sh
+Restart=on-failure
+RestartSec=30
+# Production defaults; override via `systemctl edit sotf-idle-shutdown`
+# when you want to test with a shorter timeout.
+Environment=SOTF_IDLE_TIMEOUT_SECONDS=900
+Environment=SOTF_CHECK_INTERVAL_SECONDS=30
+Environment=SOTF_CONTAINER_NAME=sotf-server
+
+[Install]
+WantedBy=multi-user.target

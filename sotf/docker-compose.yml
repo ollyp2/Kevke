@@ -1,0 +1,14 @@
+services:
+  sotf-server:
+    image: jammsen/sons-of-the-forest-dedicated-server:latest
+    container_name: sotf-server
+    restart: unless-stopped
+    ports:
+      - "8766:8766/udp"      # game
+      - "27016:27016/udp"    # Steam query
+      - "9700:9700/udp"      # BlobSync (world sync)
+    environment:
+      SERVERNAME:     "${SOTF_SERVERNAME:?set SOTF_SERVERNAME in .env}"
+      SERVERPASSWORD: "${SOTF_SERVERPASSWORD:?set SOTF_SERVERPASSWORD in .env}"
+    volumes:
+      - ./userdata:/dedicatedserver/userdata
