@@ -21,6 +21,10 @@ if [[ -z "${TOKEN:-}" ]]; then
   exit 1
 fi
 
+# --docker-repository is spelled out because gcloud fails to look it up
+# on redeploys of an existing gen2 function:
+#   AttributeError: 'NoneType' object has no attribute 'dockerRepository'
+# The path below is the default repo gcloud creates on the first deploy.
 gcloud functions deploy "$NAME" \
   --project="$PROJECT" \
   --region="$REGION" \
@@ -32,6 +36,7 @@ gcloud functions deploy "$NAME" \
   --allow-unauthenticated \
   --memory=256Mi \
   --timeout=30s \
+  --docker-repository="projects/${PROJECT}/locations/${REGION}/repositories/gcf-artifacts" \
   --set-env-vars="TOKEN=${TOKEN},PROJECT_ID=${PROJECT},ZONE=${ZONE},INSTANCE=${INSTANCE},QUERY_PORT=27016"
 
 URL="$(gcloud functions describe "$NAME" --project="$PROJECT" \
