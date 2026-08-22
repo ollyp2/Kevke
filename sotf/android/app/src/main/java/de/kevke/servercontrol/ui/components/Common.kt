@@ -131,6 +131,19 @@ fun StatusLamp(state: String, modifier: Modifier = Modifier) {
     }
 }
 
+/** Thin determinate bar, drawn rather than themed, to match the line-art look. */
+@Composable
+fun ProgressBar(progress: Float, modifier: Modifier = Modifier) {
+    val c = LocalAppColors.current
+    Canvas(modifier.fillMaxWidth().height(3.dp)) {
+        drawRect(color = c.outline, size = size)
+        drawRect(
+            color = c.accent,
+            size = size.copy(width = size.width * progress.coerceIn(0f, 1f)),
+        )
+    }
+}
+
 /** Outlined action button — stroke only, no filled slab. */
 @Composable
 fun LineButton(

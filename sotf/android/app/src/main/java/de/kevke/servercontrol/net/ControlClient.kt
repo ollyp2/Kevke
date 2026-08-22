@@ -69,5 +69,64 @@ class ControlClient(private val baseUrl: String, private val token: String) {
     suspend fun stop(force: Boolean = false): Reply =
         call("stop", if (force) "&force=1" else "")
 
+    // ---- backups ---------------------------------------------------------
+
+    @Serializable
+    data class Backup(
+        val name: String,
+        val createdAt: String? = null,
+        val status: String? = null,
+        val sizeGb: Int = 0,
+        val diskSizeGb: Int = 0,
+        val label: String = "",
+    ) {
+        val isReady get() = status == "READY"
+    }
+
+    @Serializable
+    data class BackupList(
+        val ok: Boolean = false,
+        val message: String = "",
+        val backups: List<Backup> = emptyList(),
+    )
+
+    suspend fun backups(): BackupList = withContext(Dispatchers.IO) {
+        val body = http.get(url("backups")) { header("Accept", "application/json") }
+            .bodyAsText()
+        runCatching { json.decodeFromString<BackupList>(body) }
+            .getOrElse { BackupList(message = body.take(200)) }
+    }
+
+    suspend fun createBackup(label: String?): Reply =
+        call("backup", label?.takeIf { it.isNotBlank() }?.let { "&label=$it" } ?: "")
+
+    suspend fun restoreBackup(name: String): Reply = call("restore", "&name=$name")
+
+    suspend fun deleteBackup(name: String): Reply =
+        call("delete_backup", "&name=$name")
+
+    // ---- billing ---------------------------------------------------------
+
+    @Serializable
+    data class Billing(
+        val ok: Boolean = false,
+        val message: String = "",
+        val range: String = "month",
+        val from: String? = null,
+        val to: String? = null,
+        val uptimeSeconds: Long = 0,
+        val hourlyRateEur: Double = 0.0,
+        val totalEur: Double = 0.0,
+        val events: Int = 0,
+    )
+
+    suspend fun billing(range: String): Billing = withContext(Dispatchers.IO) {
+        val body = http.get(url("billing", "&range=$range")) {
+            header("Accept", "application/json")
+        }.bodyAsText()
+        runCatching { json.decodeFromString<Billing>(body) }
+            .getOrElse { Billing(message = body.take(200)) }
+    }
+
     fun close() = http.close()
 }

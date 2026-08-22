@@ -13,8 +13,15 @@ android {
         applicationId = "de.kevke.servercontrol"
         minSdk = 29
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0"
+
+        // CI passes the GitHub run number so every build is ordered; local
+        // builds fall back to 1 and simply never look newer than a release.
+        val build = (project.findProperty("buildNumber") as String?)?.toIntOrNull() ?: 1
+        versionCode = build
+        versionName = "0.2.0"
+
+        buildConfigField("long", "BUILD_NUMBER", "${build}L")
+        buildConfigField("String", "VERSION_LABEL", "\"0.2.0-$build\"")
     }
 
     buildTypes {
@@ -28,7 +35,10 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
     kotlinOptions { jvmTarget = "17" }
-    buildFeatures { compose = true }
+    buildFeatures {
+        compose = true
+        buildConfig = true
+    }
 }
 
 dependencies {

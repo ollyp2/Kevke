@@ -6,6 +6,10 @@ on:
     branches: [claude/sotf-server-setup-llure1]
     paths: ['sotf/android/**', '.github/workflows/build-android.yml']
 
+# Needed to publish the release the app updates itself from.
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -29,8 +33,15 @@ jobs:
       - name: Generate Gradle wrapper
         run: gradle wrapper --gradle-version 8.9
 
+      # The run number becomes versionCode, so releases are strictly
+      # ordered and the app can tell "newer" from "same".
       - name: Build debug APK
-        run: ./gradlew assembleDebug --stacktrace
+        run: ./gradlew assembleDebug -PbuildNumber=${{ github.run_number }} --stacktrace
+
+      - name: Rename APK
+        run: |
+          mv app/build/outputs/apk/debug/app-debug.apk \
+             app/build/outputs/apk/debug/server-control-${{ github.run_number }}.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
@@ -38,3 +49,18 @@ jobs:
           name: server-control-debug
           path: sotf/android/app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
+
+      # The app checks this release to offer in-app updates, so it only
+      # makes sense for real pushes — not for manual test runs.
+      - name: Publish release
+        if: github.event_name == 'push'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: app-v0.2.0-${{ github.run_number }}
+          name: Server Control 0.2.0 (Build ${{ github.run_number }})
+          body: |
+            Automatischer Build von ${{ github.sha }}.
+
+            ${{ github.event.head_commit.message }}
+          files: sotf/android/app/build/outputs/apk/debug/*.apk
+          make_latest: true

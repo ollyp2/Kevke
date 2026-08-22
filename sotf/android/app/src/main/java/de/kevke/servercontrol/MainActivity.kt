@@ -31,6 +31,8 @@ private data class MenuEntry(val route: String, val label: String, val icon: Ima
 
 private val MENU = listOf(
     MenuEntry("home", "Start", LineIcons.Power),
+    MenuEntry("backups", "Backups", LineIcons.Save),
+    MenuEntry("billing", "Kosten", LineIcons.Billing),
     MenuEntry("settings", "Einstellungen", LineIcons.Settings),
     MenuEntry("setup", "Verbindung aendern", LineIcons.Server),
 )
@@ -84,6 +86,12 @@ private fun AppRoot(vm: AppViewModel) {
                 }
                 composable("home") {
                     HomeScreen(vm) { scope.launch { drawerState.open() } }
+                }
+                composable("backups") {
+                    SubScreen("Backups", nav) { BackupsScreen(vm) }
+                }
+                composable("billing") {
+                    SubScreen("Kosten", nav) { BillingScreen(vm) }
                 }
                 composable("settings") {
                     SubScreen("Einstellungen", nav) { SettingsScreen(vm) }

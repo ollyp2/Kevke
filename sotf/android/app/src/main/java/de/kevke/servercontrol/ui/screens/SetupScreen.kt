@@ -141,7 +141,73 @@ fun SettingsScreen(vm: AppViewModel) {
             Text(config.baseUrl, style = MaterialTheme.typography.bodyMedium,
                  color = c.onMuted)
         }
+
+        Spacer(Modifier.height(28.dp))
+        Text("APP-VERSION", style = MaterialTheme.typography.labelSmall, color = c.onMuted)
+        Spacer(Modifier.height(10.dp))
+        UpdatePanel(vm)
+
         Spacer(Modifier.height(32.dp))
+    }
+}
+
+/** Version, update check, and the download progress while one installs. */
+@Composable
+private fun UpdatePanel(vm: AppViewModel) {
+    val c = LocalAppColors.current
+    val update by vm.update.collectAsState()
+    val progress by vm.downloadProgress.collectAsState()
+
+    Panel {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(vm.versionLabel, style = MaterialTheme.typography.bodyLarge,
+                     color = c.onBackground)
+                Text(
+                    update?.let { "Neu verfuegbar: ${it.versionName}" }
+                        ?: "Installierte Version",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = if (update != null) c.accent else c.onMuted,
+                )
+            }
+        }
+
+        update?.let { available ->
+            if (available.notes.isNotBlank()) {
+                Spacer(Modifier.height(10.dp))
+                Text(
+                    available.notes.lineSequence().take(4).joinToString("\n"),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = c.onMuted,
+                )
+            }
+        }
+
+        Spacer(Modifier.height(14.dp))
+
+        when {
+            progress != null -> {
+                Text(
+                    "Laedt… ${((progress ?: 0f) * 100).toInt()} %",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = c.accent,
+                )
+                Spacer(Modifier.height(8.dp))
+                ProgressBar(progress ?: 0f)
+            }
+            update != null -> LineButton(
+                label = "Update installieren",
+                icon = LineIcons.Upload,
+                modifier = Modifier.fillMaxWidth(),
+                onClick = { vm.installUpdate() },
+            )
+            else -> LineButton(
+                label = "Nach Updates suchen",
+                icon = LineIcons.Restore,
+                modifier = Modifier.fillMaxWidth(),
+                onClick = { vm.checkForUpdate(announceWhenCurrent = true) },
+            )
+        }
     }
 }
 

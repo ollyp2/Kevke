@@ -1,11 +1,8 @@
 #!/usr/bin/env bash
-# Deploy sotf-control — start/stop/status behind one token.
+# Deploy sotf-control — power, backups and billing behind one token.
 #
 #   export TOKEN=$(openssl rand -hex 24)
 #   bash deploy.sh
-#
-# Keeps the existing sotf-start-trigger untouched; delete that one once
-# the app points at this function.
 
 set -euo pipefail
 
@@ -14,6 +11,7 @@ REGION="${REGION:-europe-west3}"
 ZONE="${ZONE:-europe-west3-a}"
 INSTANCE="${INSTANCE:-sotf-server}"
 NAME="${NAME:-sotf-control}"
+HOURLY_RATE="${HOURLY_RATE:-0.17}"
 
 if [[ -z "${TOKEN:-}" ]]; then
   echo "TOKEN not set. Generate one (and keep it out of git):" >&2
@@ -21,10 +19,28 @@ if [[ -z "${TOKEN:-}" ]]; then
   exit 1
 fi
 
+PROJNUM="$(gcloud projects describe "$PROJECT" --format='value(projectNumber)')"
+SA="${PROJNUM}-compute@developer.gserviceaccount.com"
+
+echo "== granting roles to $SA =="
+# compute.instanceAdmin.v1 covers start/stop plus snapshot and disk work;
+# logging.viewer lets the billing action read power events back out.
+for ROLE in roles/compute.instanceAdmin.v1 roles/logging.viewer; do
+  gcloud projects add-iam-policy-binding "$PROJECT" \
+    --member="serviceAccount:${SA}" \
+    --role="$ROLE" \
+    --condition=None \
+    --quiet --format='value(etag)' >/dev/null
+  echo "  $ROLE"
+done
+
+echo
+echo "== deploying $NAME =="
 # --docker-repository is spelled out because gcloud fails to look it up
 # on redeploys of an existing gen2 function:
 #   AttributeError: 'NoneType' object has no attribute 'dockerRepository'
-# The path below is the default repo gcloud creates on the first deploy.
+# A restore swaps a boot disk and waits on several zone operations, so the
+# timeout has to be well above the 30s that power actions need.
 gcloud functions deploy "$NAME" \
   --project="$PROJECT" \
   --region="$REGION" \
@@ -34,10 +50,10 @@ gcloud functions deploy "$NAME" \
   --entry-point=sotf_control \
   --trigger-http \
   --allow-unauthenticated \
-  --memory=256Mi \
-  --timeout=30s \
+  --memory=512Mi \
+  --timeout=540s \
   --docker-repository="projects/${PROJECT}/locations/${REGION}/repositories/gcf-artifacts" \
-  --set-env-vars="TOKEN=${TOKEN},PROJECT_ID=${PROJECT},ZONE=${ZONE},INSTANCE=${INSTANCE},QUERY_PORT=27016"
+  --set-env-vars="TOKEN=${TOKEN},PROJECT_ID=${PROJECT},ZONE=${ZONE},INSTANCE=${INSTANCE},QUERY_PORT=27016,HOURLY_RATE=${HOURLY_RATE}"
 
 URL="$(gcloud functions describe "$NAME" --project="$PROJECT" \
         --region="$REGION" --gen2 --format='value(serviceConfig.uri)')"
@@ -46,15 +62,9 @@ echo
 echo "Base URL: $URL"
 echo
 echo "Deine Links:"
-echo "  Start:  $URL?token=$TOKEN&action=start"
-echo "  Stop:   $URL?token=$TOKEN&action=stop"
-echo "  Status: $URL?token=$TOKEN&action=status"
+for A in start stop status backups billing; do
+  printf '  %-8s %s?token=%s&action=%s\n' "$A:" "$URL" "$TOKEN" "$A"
+done
 echo
-echo "Der Service-Account der Function braucht compute.instanceAdmin.v1:"
-echo
-PROJNUM="$(gcloud projects describe "$PROJECT" --format='value(projectNumber)')"
-cat <<PERM
-gcloud projects add-iam-policy-binding $PROJECT \\
-  --member="serviceAccount:${PROJNUM}-compute@developer.gserviceaccount.com" \\
-  --role="roles/compute.instanceAdmin.v1"
-PERM
+echo "Backup anlegen:  $URL?token=$TOKEN&action=backup&label=vor-dem-bunker"
+echo "Zuruecksetzen:   $URL?token=$TOKEN&action=restore&name=<backup-name>"

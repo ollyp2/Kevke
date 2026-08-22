@@ -1,14 +1,19 @@
 """sotf-control — one function, one token, everything via URL.
 
-Extends the existing sotf-start-trigger pattern instead of replacing it:
-same query-string token, same plain-text answers, just more actions.
+Same query-string token as the original start trigger, just more actions:
 
-    ?token=…&action=start    start the VM
-    ?token=…&action=stop     stop the VM
-    ?token=…&action=status   is it up, is the world loaded, who is on
+    ?token=…&action=start           start the VM
+    ?token=…&action=stop[&force=1]  stop it (refuses while players are on)
+    ?token=…&action=status          up? joinable? who is on?
+    ?token=…&action=backup          snapshot the disk
+    ?token=…&action=backups         list snapshots
+    ?token=…&action=restore&name=…  roll the disk back to a snapshot
+    ?token=…&action=delete_backup&name=…
+    ?token=…&action=billing&range=month
 
-Every action works from a browser, from curl, and from a button in the
-app — there is nothing to install on the VM for these three.
+Every action works pasted into a browser and answers a readable line;
+add &format=json (or an Accept: application/json header) for the machine
+version the app uses.
 
 Env vars (set at deploy time):
     TOKEN        shared secret, compared against ?token=
@@ -16,13 +21,16 @@ Env vars (set at deploy time):
     ZONE         e.g. europe-west3-a
     INSTANCE     e.g. sotf-server
     QUERY_PORT   Steam query port, default 27016
+    HOURLY_RATE  EUR per running hour, default 0.17
 """
 
 import hmac
 import json
 import os
+import re
 import socket
-from datetime import datetime, timezone
+import time
+from datetime import datetime, timedelta, timezone
 
 import functions_framework
 from googleapiclient import discovery
@@ -32,15 +40,22 @@ PROJECT_ID = os.environ["PROJECT_ID"]
 ZONE = os.environ.get("ZONE", "europe-west3-a")
 INSTANCE = os.environ.get("INSTANCE", "sotf-server")
 QUERY_PORT = int(os.environ.get("QUERY_PORT", "27016"))
+HOURLY_RATE = float(os.environ.get("HOURLY_RATE", "0.17"))
 
-_compute = None
+SNAPSHOT_PREFIX = f"{INSTANCE}-backup"
+
+_clients = {}
+
+
+def api(name, version):
+    key = (name, version)
+    if key not in _clients:
+        _clients[key] = discovery.build(name, version, cache_discovery=False)
+    return _clients[key]
 
 
 def compute():
-    global _compute
-    if _compute is None:
-        _compute = discovery.build("compute", "v1", cache_discovery=False)
-    return _compute
+    return api("compute", "v1")
 
 
 def instance():
@@ -57,6 +72,34 @@ def external_ip(inst):
     return None
 
 
+def boot_disk(inst):
+    """The instance's boot disk as (name, deviceName)."""
+    for disk in inst.get("disks", []):
+        if disk.get("boot"):
+            return disk["source"].rsplit("/", 1)[-1], disk.get("deviceName")
+    raise RuntimeError("keine Boot-Disk gefunden")
+
+
+def wait_for_op(operation, timeout=240):
+    """Block until a zone/global operation finishes, or raise."""
+    name = operation["name"]
+    zonal = "zone" in operation
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if zonal:
+            result = compute().zoneOperations().get(
+                project=PROJECT_ID, zone=ZONE, operation=name).execute()
+        else:
+            result = compute().globalOperations().get(
+                project=PROJECT_ID, operation=name).execute()
+        if result.get("status") == "DONE":
+            if "error" in result:
+                raise RuntimeError(json.dumps(result["error"]))
+            return result
+        time.sleep(2)
+    raise TimeoutError(f"Operation {name} dauert zu lange")
+
+
 # --------------------------------------------------------------------------
 # Steam query — asks the game itself, not just the hypervisor
 # --------------------------------------------------------------------------
@@ -65,7 +108,7 @@ A2S_INFO = b"\xff\xff\xff\xffTSource Engine Query\x00"
 
 
 def query_game(host, port, timeout=2.0):
-    """Return player counts, or None when the game is not answering.
+    """Player counts, or None when the game is not answering.
 
     The Compute API says RUNNING the moment the VM powers on, but the world
     still needs a couple of minutes to load. Asking the game port is the
@@ -121,15 +164,14 @@ def parse_info(data):
 
 
 # --------------------------------------------------------------------------
-# actions
+# power
 # --------------------------------------------------------------------------
 
 def action_start():
     inst = instance()
     state = inst.get("status")
     if state == "RUNNING":
-        return {"ok": True, "state": state,
-                "message": "Laeuft schon."}, 200
+        return {"ok": True, "state": state, "message": "Laeuft schon."}, 200
     compute().instances().start(
         project=PROJECT_ID, zone=ZONE, instance=INSTANCE).execute()
     return {"ok": True, "state": "STAGING",
@@ -159,7 +201,7 @@ def action_stop(force):
             "message": "Server faehrt herunter."}, 200
 
 
-def describe(state, game, uptime):
+def describe_status(state, game, uptime):
     """One readable line, so the status link is useful in a browser too."""
     if state != "RUNNING":
         return {"TERMINATED": "Server ist aus.",
@@ -172,9 +214,12 @@ def describe(state, game, uptime):
     who = f"{game['players']} von {game['maxPlayers']} Spielern online"
     if uptime is None:
         return f"Server laeuft. {who}."
-    hours, minutes = uptime // 3600, (uptime % 3600) // 60
-    seit = f"{hours} h {minutes} min" if hours else f"{minutes} min"
-    return f"Server laeuft seit {seit}. {who}."
+    return f"Server laeuft seit {human_duration(uptime)}. {who}."
+
+
+def human_duration(seconds):
+    hours, minutes = seconds // 3600, (seconds % 3600) // 60
+    return f"{hours} h {minutes} min" if hours else f"{minutes} min"
 
 
 def action_status():
@@ -193,7 +238,7 @@ def action_status():
     return {
         "ok": True,
         "state": state,
-        "message": describe(state, game, uptime),
+        "message": describe_status(state, game, uptime),
         "externalIp": ip,
         "lastStart": inst.get("lastStartTimestamp"),
         "lastStop": inst.get("lastStopTimestamp"),
@@ -202,6 +247,268 @@ def action_status():
         "players": game["players"] if game else 0,
         "maxPlayers": game["maxPlayers"] if game else 0,
         "serverName": game["serverName"] if game else None,
+    }, 200
+
+
+# --------------------------------------------------------------------------
+# backups — persistent disk snapshots
+#
+# Snapshots cover the whole disk, not just the savegame folder. Coarser
+# than copying userdata/, but the function can do it entirely on its own:
+# nothing has to be installed on the VM, and it works while the VM is off.
+# --------------------------------------------------------------------------
+
+def action_backup(label):
+    inst = instance()
+    disk_name, _ = boot_disk(inst)
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    slug = re.sub(r"[^a-z0-9-]+", "-", (label or "").lower()).strip("-")[:20]
+    name = f"{SNAPSHOT_PREFIX}-{stamp}" + (f"-{slug}" if slug else "")
+
+    op = compute().disks().createSnapshot(
+        project=PROJECT_ID, zone=ZONE, disk=disk_name,
+        body={
+            "name": name,
+            "description": json.dumps({
+                "label": label or "",
+                "vmState": inst.get("status"),
+                "created": stamp,
+            }),
+        },
+    ).execute()
+
+    # Snapshots keep filling in afterwards; waiting for READY here would
+    # blow the request timeout on a 40 GB disk for no benefit.
+    wait_for_op(op, timeout=90)
+
+    return {"ok": True, "name": name,
+            "message": f"Backup {name} wird erstellt."}, 200
+
+
+def action_backups():
+    result = compute().snapshots().list(
+        project=PROJECT_ID,
+        filter=f'name:{SNAPSHOT_PREFIX}*',
+        orderBy="creationTimestamp desc",
+        maxResults=50,
+    ).execute()
+
+    backups = []
+    for snap in result.get("items", []):
+        meta = {}
+        try:
+            meta = json.loads(snap.get("description") or "{}")
+        except json.JSONDecodeError:
+            pass
+        backups.append({
+            "name": snap["name"],
+            "createdAt": snap.get("creationTimestamp"),
+            "status": snap.get("status"),
+            "sizeGb": int(snap.get("storageBytes", 0)) // (1024 ** 3),
+            "diskSizeGb": int(snap.get("diskSizeGb", 0)),
+            "label": meta.get("label", ""),
+        })
+
+    if not backups:
+        message = "Noch keine Backups."
+    else:
+        newest = backups[0]
+        message = f"{len(backups)} Backups, neuestes: {newest['name']}."
+    return {"ok": True, "backups": backups, "message": message}, 200
+
+
+def action_restore(name):
+    """Swap the boot disk for a fresh one built from a snapshot.
+
+    The old disk is detached but never deleted, so a bad restore is
+    reversible — at the cost of an unattached disk lingering until you
+    remove it (about 1.60 EUR a month for 40 GB).
+    """
+    if not name:
+        return {"ok": False, "message": "name= fehlt."}, 400
+
+    inst = instance()
+    if inst.get("status") != "TERMINATED":
+        return {"ok": False, "state": inst.get("status"),
+                "message": "Server muss erst aus sein. Zuerst action=stop."}, 409
+
+    try:
+        snap = compute().snapshots().get(
+            project=PROJECT_ID, snapshot=name).execute()
+    except Exception:  # noqa: BLE001 - a missing snapshot is a user error
+        return {"ok": False, "message": f"Backup {name} gibt es nicht."}, 404
+    if snap.get("status") != "READY":
+        return {"ok": False,
+                "message": f"Backup {name} ist noch nicht fertig "
+                           f"({snap.get('status')})."}, 409
+
+    old_disk, device_name = boot_disk(inst)
+    new_disk = f"{INSTANCE}-{datetime.now(timezone.utc):%Y%m%d-%H%M%S}"
+
+    op = compute().disks().insert(
+        project=PROJECT_ID, zone=ZONE,
+        body={
+            "name": new_disk,
+            "sourceSnapshot": snap["selfLink"],
+            "sizeGb": snap.get("diskSizeGb"),
+            "type": f"projects/{PROJECT_ID}/zones/{ZONE}/diskTypes/pd-balanced",
+        },
+    ).execute()
+    wait_for_op(op)
+
+    op = compute().instances().detachDisk(
+        project=PROJECT_ID, zone=ZONE, instance=INSTANCE,
+        deviceName=device_name).execute()
+    wait_for_op(op)
+
+    op = compute().instances().attachDisk(
+        project=PROJECT_ID, zone=ZONE, instance=INSTANCE,
+        body={
+            "source": f"projects/{PROJECT_ID}/zones/{ZONE}/disks/{new_disk}",
+            "boot": True,
+            "autoDelete": False,
+            "deviceName": device_name,
+        },
+    ).execute()
+    wait_for_op(op)
+
+    return {
+        "ok": True,
+        "restored": name,
+        "newDisk": new_disk,
+        "oldDisk": old_disk,
+        "message": f"Backup {name} eingespielt. Alte Platte {old_disk} "
+                   f"bleibt als Rueckfallnetz liegen.",
+    }, 200
+
+
+def action_delete_backup(name):
+    if not name:
+        return {"ok": False, "message": "name= fehlt."}, 400
+    try:
+        compute().snapshots().delete(project=PROJECT_ID, snapshot=name).execute()
+    except Exception:  # noqa: BLE001
+        return {"ok": False, "message": f"Backup {name} gibt es nicht."}, 404
+    return {"ok": True, "deleted": name,
+            "message": f"Backup {name} geloescht."}, 200
+
+
+# --------------------------------------------------------------------------
+# billing
+#
+# Start and stop events are read back out of Cloud Logging, because the
+# idle-shutdown terminates the VM from inside the guest and that never
+# shows up as a Compute API "stop" operation — only as a system event.
+# Log retention is 30 days by default, so older ranges come back short.
+# --------------------------------------------------------------------------
+
+RANGE_PRESETS = {
+    "day": timedelta(days=1),
+    "week": timedelta(days=7),
+    "month": timedelta(days=30),
+    "quarter": timedelta(days=91),
+    "year": timedelta(days=365),
+}
+
+START_METHODS = ("compute.instances.start",)
+STOP_METHODS = ("compute.instances.stop", "compute.instances.guestTerminate",
+                "compute.instances.preempted", "compute.instances.terminateOnHostMaintenance")
+
+
+def power_events(instance_id, start, end):
+    """(timestamp, "start"|"stop") pairs from the audit and system logs."""
+    filter_str = (
+        f'resource.type="gce_instance" '
+        f'resource.labels.instance_id="{instance_id}" '
+        f'timestamp>="{start.isoformat().replace("+00:00", "Z")}" '
+        f'timestamp<="{end.isoformat().replace("+00:00", "Z")}" '
+        f'protoPayload.methodName:("start" OR "stop" OR "guestTerminate")'
+    )
+    body = {
+        "resourceNames": [f"projects/{PROJECT_ID}"],
+        "filter": filter_str,
+        "orderBy": "timestamp asc",
+        "pageSize": 500,
+    }
+
+    events = []
+    page_token = None
+    while True:
+        if page_token:
+            body["pageToken"] = page_token
+        result = api("logging", "v2").entries().list(body=body).execute()
+        for entry in result.get("entries", []):
+            method = (entry.get("protoPayload") or {}).get("methodName", "")
+            short = method.rsplit(".", 1)[-1] if method else ""
+            kind = None
+            if any(m.endswith(short) for m in START_METHODS) and short == "start":
+                kind = "start"
+            elif short in ("stop", "guestTerminate", "preempted"):
+                kind = "stop"
+            if kind:
+                events.append((datetime.fromisoformat(
+                    entry["timestamp"].replace("Z", "+00:00")), kind))
+        page_token = result.get("nextPageToken")
+        if not page_token:
+            break
+
+    events.sort(key=lambda e: e[0])
+    return events
+
+
+def uptime_seconds(events, start, end, currently_running):
+    """Fold start/stop events into running time inside the window."""
+    total = 0.0
+    open_since = None
+
+    # A stop as the first event means the VM was already up when the
+    # window opened; count from the window start.
+    if events and events[0][1] == "stop":
+        open_since = start
+    elif not events and currently_running:
+        open_since = start
+
+    for moment, kind in events:
+        if kind == "start" and open_since is None:
+            open_since = moment
+        elif kind == "stop" and open_since is not None:
+            total += (moment - open_since).total_seconds()
+            open_since = None
+
+    if open_since is not None:
+        total += (end - open_since).total_seconds()
+    return int(total)
+
+
+def action_billing(range_key, custom_from, custom_to):
+    end = datetime.now(timezone.utc)
+    if range_key == "custom":
+        if not custom_from or not custom_to:
+            return {"ok": False, "message": "from= und to= noetig."}, 400
+        start = datetime.fromisoformat(custom_from.replace("Z", "+00:00"))
+        end = datetime.fromisoformat(custom_to.replace("Z", "+00:00"))
+    elif range_key in RANGE_PRESETS:
+        start = end - RANGE_PRESETS[range_key]
+    else:
+        return {"ok": False,
+                "message": f"range={range_key} kenne ich nicht."}, 400
+
+    inst = instance()
+    running = inst.get("status") == "RUNNING"
+    events = power_events(inst["id"], start, end)
+    seconds = uptime_seconds(events, start, end, running)
+    cost = round(seconds / 3600 * HOURLY_RATE, 2)
+
+    return {
+        "ok": True,
+        "range": range_key,
+        "from": start.isoformat().replace("+00:00", "Z"),
+        "to": end.isoformat().replace("+00:00", "Z"),
+        "uptimeSeconds": seconds,
+        "hourlyRateEur": HOURLY_RATE,
+        "totalEur": cost,
+        "events": len(events),
+        "message": f"{human_duration(seconds)} Laufzeit, rund {cost:.2f} EUR.",
     }, 200
 
 
@@ -215,6 +522,7 @@ def sotf_control(request):
 
     action = request.args.get("action", "status").lower()
     force = request.args.get("force") in ("1", "true", "yes")
+    name = request.args.get("name")
 
     try:
         if action == "start":
@@ -223,6 +531,18 @@ def sotf_control(request):
             payload, code = action_stop(force)
         elif action == "status":
             payload, code = action_status()
+        elif action == "backup":
+            payload, code = action_backup(request.args.get("label"))
+        elif action == "backups":
+            payload, code = action_backups()
+        elif action == "restore":
+            payload, code = action_restore(name)
+        elif action == "delete_backup":
+            payload, code = action_delete_backup(name)
+        elif action == "billing":
+            payload, code = action_billing(
+                request.args.get("range", "month"),
+                request.args.get("from"), request.args.get("to"))
         else:
             payload, code = {"ok": False,
                              "message": f"Unbekannte action: {action}"}, 400

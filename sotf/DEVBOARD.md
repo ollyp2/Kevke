@@ -41,6 +41,11 @@ jetzt joinen?* Nebenbei liefert es Servername und Spielerzahl.
 | `?token=…&action=stop` | VM stoppen (lehnt ab wenn Spieler online) |
 | `?token=…&action=stop&force=1` | trotzdem stoppen |
 | `?token=…&action=status` | Zustand, IP, Spieler, Laufzeit |
+| `?token=…&action=backup&label=…` | Disk-Snapshot anlegen |
+| `?token=…&action=backups` | Snapshots auflisten |
+| `?token=…&action=restore&name=…` | Boot-Disk auf Snapshot zurücksetzen |
+| `?token=…&action=delete_backup&name=…` | Snapshot löschen |
+| `?token=…&action=billing&range=month` | Laufzeit und Kosten im Zeitraum |
 
 Ohne `format=json` bzw. `Accept: application/json` kommt eine lesbare
 Zeile zurück — genau wie beim alten `sotf-start-trigger`, damit die Links
@@ -59,34 +64,41 @@ im Browser und im Chat brauchbar bleiben.
 
 | Feature | Function | App-UI | Verifiziert |
 |---|---|---|---|
-| An/Aus (großer runder Knopf) | ✅ | ✅ | ⏳ |
-| Status-Lampe | ✅ | ✅ | ⏳ |
-| „Welt lädt noch"-Unterscheidung | ✅ | ✅ | ⏳ |
-| Spielerzahl live | ✅ | ✅ | ⏳ |
-| Laufzeit-Anzeige | ✅ | ✅ | ⏳ |
+| An/Aus (großer runder Knopf) | ✅ | ✅ | ✅ |
+| Status-Lampe | ✅ | ✅ | ✅ |
+| „Welt lädt noch"-Unterscheidung | ✅ | ✅ | ✅ |
+| Spielerzahl live | ✅ | ✅ | ✅ |
+| Laufzeit-Anzeige | ✅ | ✅ | ✅ |
 | Schutz vor Stop bei Spielern | ✅ | ✅ | ⏳ |
-| Variable Farben (Hintergrund/Akzent) | — | ✅ | ⏳ |
-| Line-Art-Icons, keine Emoji | — | ✅ | ⏳ |
+| Variable Farben (Hintergrund/Akzent) | — | ✅ | ✅ |
+| Line-Art-Icons, keine Emoji | — | ✅ | ✅ |
+| Backup anlegen / listen / löschen | ✅ | ✅ | ⏳ |
+| Restore (Boot-Disk-Tausch) | ✅ | ✅ | ⏳ |
+| Kostenübersicht | ✅ | ✅ | ⏳ |
+| Self-Update über GitHub Releases | — | ✅ | ⏳ |
 
-## Geplant — jeweils als neue Action
+## Wie die App sich selbst aktualisiert
 
-Das Muster bleibt gleich: eine Action dazu, ein Screen dazu.
+Das Repo ist öffentlich, also braucht der Update-Weg keine Credentials:
 
-| Feature | Action | Braucht |
-|---|---|---|
-| Backup jetzt | `action=backup` | Zugriff auf `userdata/` → siehe B1 |
-| Backup-Liste | `action=backups` | dito |
-| Restore | `action=restore&name=…` | dito |
-| Config lesen/schreiben | `action=config` | dito |
-| Weltwechsel | `action=world&slot=N` | dito |
-| Kostenübersicht | `action=billing` | Laufzeit-Historie → siehe B2 |
-| Item geben / Teleport | `action=give` … | Konsolen-Kanal → siehe B3 |
+1. Die GitHub-Action baut bei jedem Push die APK und veröffentlicht sie als
+   Release mit dem Tag `app-v0.2.0-<run_number>`.
+2. `versionCode` ist dieselbe `run_number`, so sind zwei Builds immer
+   eindeutig sortierbar.
+3. Die App liest `releases/latest`, vergleicht die Build-Nummer aus dem Tag
+   mit ihrer eigenen und bietet ein Update an, wenn sie größer ist.
+4. Beim Antippen lädt sie die APK in ihren Cache und übergibt sie dem
+   System-Installer (`REQUEST_INSTALL_PACKAGES` + FileProvider).
+
+Du musst also nur einmal manuell installieren; danach meldet sich die App
+selbst, sobald ich etwas gepusht habe.
 
 ## Offene Punkte
 
 ### B1 — Wie kommt die Function an die Dateien auf der VM?
-Backups, Config und Weltwechsel arbeiten auf `/home/kradtke79/sotf/userdata`.
-Die Function kann dort nicht direkt hin. Optionen:
+Weltwechsel und die SotF-Config arbeiten auf
+`/home/kradtke79/sotf/userdata`. Die Function kann dort nicht direkt hin.
+Optionen:
 - **(a)** Startup-Script-Metadata setzen und VM neu starten — funktioniert,
   aber grob und nur beim Boot.
 - **(b)** Kleiner HTTP-Dienst auf der VM, den die Function aufruft. Braucht
@@ -95,20 +107,18 @@ Die Function kann dort nicht direkt hin. Optionen:
 - **(c)** Ein Skript auf der VM, das per Cron eine „Aufträge"-Datei in einem
   GCS-Bucket abholt. Function schreibt rein, VM arbeitet ab. Simpel, aber
   mit Verzögerung.
-- **(d)** Backups komplett ohne VM: Persistent-Disk-Snapshots über die
-  Compute API. Die Function kann das allein, ohne irgendetwas auf der VM.
-  Sichert die ganze Platte statt nur `userdata`.
 
-**→ (d) ist der klar einfachste Weg für Backups** und passt zum Leitprinzip.
-Für Config/Weltwechsel bräuchte es trotzdem einen der anderen Wege.
+Für **Backups** hat sich die Frage erledigt: Disk-Snapshots über die
+Compute API brauchen nichts auf der VM und laufen auch, wenn sie aus ist.
+Der Preis ist Granularität — gesichert wird die ganze Platte, nicht nur
+`userdata`.
 
-### B2 — Laufzeit-Historie für die Kostenübersicht
-Die Compute API liefert nur `lastStartTimestamp` / `lastStopTimestamp`,
-keine Historie. Für „was hat der Monat gekostet" braucht es entweder:
-- Cloud Logging abfragen (Start/Stop-Events stehen dort ohnehin drin), oder
-- die Function schreibt bei jedem Start/Stop eine Zeile weg.
-
-**→ Cloud Logging ist der Weg ohne zusätzlichen Speicher.**
+### B2 — Kosten pro Spieler
+Die Gesamtkosten stehen. Für die Aufteilung nach Spielern müsste jemand
+regelmäßig festhalten, wer online war — die Function sieht das nur, wenn
+sie gerade gefragt wird. Machbar mit Cloud Scheduler alle 5 Minuten plus
+einer Log-Zeile pro Stichprobe, dann lässt sich dieselbe Intervall-Rechnung
+wie geplant darüberlegen.
 
 ### B3 — Konsolen-Befehle (Item geben, Teleport)
 Der SotF-Dedicated-Server hat kein RCON. Es gibt keinen dokumentierten Weg,
@@ -131,6 +141,11 @@ ihm von außen Befehle zu schicken. Realistisch:
 
 ## Changelog
 
+- **2026-08-22** — Backups (Disk-Snapshots), Kostenübersicht und
+  Self-Update über GitHub Releases. Function-Timeout auf 540 s wegen des
+  Boot-Disk-Tauschs beim Restore; `roles/logging.viewer` dazu, weil die
+  Kostenrechnung Start/Stop aus dem Log liest — der Idle-Shutdown
+  terminiert von innen und taucht nie als Compute-API-Stop auf.
 - **2026-08-21 (2)** — Kurs korrigiert: Firestore, Job-Queue und VM-Agent
   wieder rausgeworfen. Alles läuft über eine Function mit Actions in der
   URL, so wie von Anfang an gewünscht. App auf zwei Felder eingedampft

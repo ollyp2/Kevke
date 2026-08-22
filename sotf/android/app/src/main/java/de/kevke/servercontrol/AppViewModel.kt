@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import de.kevke.servercontrol.data.ControlConfig
 import de.kevke.servercontrol.data.Settings
 import de.kevke.servercontrol.net.ControlClient
+import de.kevke.servercontrol.net.UpdateChecker
 import de.kevke.servercontrol.ui.theme.AccentPreset
 import de.kevke.servercontrol.ui.theme.SurfacePreset
 import kotlinx.coroutines.Job
@@ -36,6 +37,22 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val _setupError = MutableStateFlow<String?>(null)
     val setupError: StateFlow<String?> = _setupError.asStateFlow()
 
+    private val _backups = MutableStateFlow<List<ControlClient.Backup>>(emptyList())
+    val backups: StateFlow<List<ControlClient.Backup>> = _backups.asStateFlow()
+
+    private val _billing = MutableStateFlow(ControlClient.Billing())
+    val billing: StateFlow<ControlClient.Billing> = _billing.asStateFlow()
+
+    private val updates = UpdateChecker(app)
+
+    private val _update = MutableStateFlow<UpdateChecker.Available?>(null)
+    val update: StateFlow<UpdateChecker.Available?> = _update.asStateFlow()
+
+    private val _downloadProgress = MutableStateFlow<Float?>(null)
+    val downloadProgress: StateFlow<Float?> = _downloadProgress.asStateFlow()
+
+    val versionLabel: String = BuildConfig.VERSION_LABEL
+
     private val _surfacePreset = MutableStateFlow(settings.surfacePreset)
     val surfacePreset: StateFlow<SurfacePreset> = _surfacePreset.asStateFlow()
 
@@ -49,6 +66,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             openClient(settings.controlConfig)
             startPolling()
         }
+        checkForUpdate()
     }
 
     private fun openClient(config: ControlConfig) {
@@ -133,6 +151,87 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    // ---- backups ---------------------------------------------------------
+
+    fun refreshBackups() {
+        val c = client ?: return
+        viewModelScope.launch {
+            runCatching { c.backups() }
+                .onSuccess { _backups.value = it.backups }
+                .onFailure { notify(it.message ?: "Backups nicht abrufbar") }
+        }
+    }
+
+    fun createBackup(label: String?) {
+        val c = client ?: return notify("Nicht eingerichtet")
+        viewModelScope.launch {
+            _working.value = true
+            runCatching { c.createBackup(label) }
+                .onSuccess { notify(it.message) }
+                .onFailure { notify(it.message ?: "Backup fehlgeschlagen") }
+            _working.value = false
+            refreshBackups()
+        }
+    }
+
+    fun restoreBackup(name: String) {
+        val c = client ?: return notify("Nicht eingerichtet")
+        viewModelScope.launch {
+            _working.value = true
+            notify("Backup wird eingespielt, das dauert ein bis zwei Minuten…")
+            runCatching { c.restoreBackup(name) }
+                .onSuccess { notify(it.message) }
+                .onFailure { notify(it.message ?: "Restore fehlgeschlagen") }
+            _working.value = false
+            refreshStatus()
+        }
+    }
+
+    fun deleteBackup(name: String) {
+        val c = client ?: return notify("Nicht eingerichtet")
+        viewModelScope.launch {
+            runCatching { c.deleteBackup(name) }
+                .onSuccess { notify(it.message) }
+                .onFailure { notify(it.message ?: "Loeschen fehlgeschlagen") }
+            refreshBackups()
+        }
+    }
+
+    // ---- billing ---------------------------------------------------------
+
+    fun refreshBilling(range: String) {
+        val c = client ?: return
+        viewModelScope.launch {
+            runCatching { c.billing(range) }
+                .onSuccess { _billing.value = it }
+                .onFailure { notify(it.message ?: "Kosten nicht abrufbar") }
+        }
+    }
+
+    // ---- self-update -----------------------------------------------------
+
+    fun checkForUpdate(announceWhenCurrent: Boolean = false) {
+        viewModelScope.launch {
+            val found = updates.check(BuildConfig.BUILD_NUMBER)
+            _update.value = found
+            if (found == null && announceWhenCurrent) notify("Die App ist aktuell.")
+        }
+    }
+
+    fun installUpdate() {
+        val target = _update.value ?: return
+        viewModelScope.launch {
+            _downloadProgress.value = 0f
+            updates.downloadAndInstall(target) { _downloadProgress.value = it }
+                .onFailure { notify(it.message ?: "Download fehlgeschlagen") }
+            _downloadProgress.value = null
+        }
+    }
+
+    fun dismissUpdate() {
+        _update.value = null
+    }
+
     fun notify(text: String) {
         _message.value = text
         viewModelScope.launch {
@@ -153,6 +252,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     override fun onCleared() {
         client?.close()
+        updates.close()
         super.onCleared()
     }
 }
