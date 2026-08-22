@@ -1,0 +1,40 @@
+name: Build Server Control APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [claude/sotf-server-setup-llure1]
+    paths: ['sotf/android/**', '.github/workflows/build-android.yml']
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: sotf/android
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      # The repo carries no wrapper jar, so generate one pinned to the
+      # version the build scripts expect.
+      - name: Generate Gradle wrapper
+        run: gradle wrapper --gradle-version 8.9
+
+      - name: Build debug APK
+        run: ./gradlew assembleDebug --stacktrace
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: server-control-debug
+          path: sotf/android/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
