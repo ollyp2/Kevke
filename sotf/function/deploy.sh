@@ -22,10 +22,15 @@ fi
 PROJNUM="$(gcloud projects describe "$PROJECT" --format='value(projectNumber)')"
 SA="${PROJNUM}-compute@developer.gserviceaccount.com"
 
+echo "== enabling APIs =="
+# Monitoring supplies the measured uptime the billing action reports.
+gcloud services enable monitoring.googleapis.com --project="$PROJECT"
+
+echo
 echo "== granting roles to $SA =="
 # compute.instanceAdmin.v1 covers start/stop plus snapshot and disk work;
-# logging.viewer lets the billing action read power events back out.
-for ROLE in roles/compute.instanceAdmin.v1 roles/logging.viewer; do
+# monitoring.viewer lets the billing action read the uptime metric.
+for ROLE in roles/compute.instanceAdmin.v1 roles/monitoring.viewer; do
   gcloud projects add-iam-policy-binding "$PROJECT" \
     --member="serviceAccount:${SA}" \
     --role="$ROLE" \

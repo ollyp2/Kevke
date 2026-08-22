@@ -286,15 +286,18 @@ def action_backup(label):
 
 
 def action_backups():
+    # The Compute API rejects filter and orderBy together, so sort here.
     result = compute().snapshots().list(
         project=PROJECT_ID,
         filter=f'name:{SNAPSHOT_PREFIX}*',
-        orderBy="creationTimestamp desc",
-        maxResults=50,
+        maxResults=100,
     ).execute()
 
+    items = sorted(result.get("items", []),
+                   key=lambda s: s.get("creationTimestamp", ""), reverse=True)
+
     backups = []
-    for snap in result.get("items", []):
+    for snap in items:
         meta = {}
         try:
             meta = json.loads(snap.get("description") or "{}")
@@ -396,10 +399,12 @@ def action_delete_backup(name):
 # --------------------------------------------------------------------------
 # billing
 #
-# Start and stop events are read back out of Cloud Logging, because the
-# idle-shutdown terminates the VM from inside the guest and that never
-# shows up as a Compute API "stop" operation — only as a system event.
-# Log retention is 30 days by default, so older ranges come back short.
+# Uptime is read from Cloud Monitoring, not derived from log events.
+# Google samples instance/uptime itself every minute, so the number is
+# measured rather than inferred — an earlier version paired start/stop
+# entries from the audit log and was badly wrong, because the idle
+# shutdown terminates the VM from inside the guest and never produces a
+# Compute API "stop" to pair against.
 # --------------------------------------------------------------------------
 
 RANGE_PRESETS = {
@@ -410,73 +415,37 @@ RANGE_PRESETS = {
     "year": timedelta(days=365),
 }
 
-START_METHODS = ("compute.instances.start",)
-STOP_METHODS = ("compute.instances.stop", "compute.instances.guestTerminate",
-                "compute.instances.preempted", "compute.instances.terminateOnHostMaintenance")
+UPTIME_METRIC = "compute.googleapis.com/instance/uptime"
 
 
-def power_events(instance_id, start, end):
-    """(timestamp, "start"|"stop") pairs from the audit and system logs."""
-    filter_str = (
-        f'resource.type="gce_instance" '
-        f'resource.labels.instance_id="{instance_id}" '
-        f'timestamp>="{start.isoformat().replace("+00:00", "Z")}" '
-        f'timestamp<="{end.isoformat().replace("+00:00", "Z")}" '
-        f'protoPayload.methodName:("start" OR "stop" OR "guestTerminate")'
+def measured_uptime(instance_id, start, end):
+    """Seconds the instance actually ran, straight from Monitoring.
+
+    instance/uptime is a DELTA metric in seconds; summing it per hour and
+    adding the buckets gives the running time in the window.
+    """
+    request = api("monitoring", "v3").projects().timeSeries().list(
+        name=f"projects/{PROJECT_ID}",
+        filter=(f'metric.type="{UPTIME_METRIC}" AND '
+                f'resource.labels.instance_id="{instance_id}"'),
+        interval_startTime=start.isoformat().replace("+00:00", "Z"),
+        interval_endTime=end.isoformat().replace("+00:00", "Z"),
+        aggregation_alignmentPeriod="3600s",
+        aggregation_perSeriesAligner="ALIGN_SUM",
+        view="FULL",
     )
-    body = {
-        "resourceNames": [f"projects/{PROJECT_ID}"],
-        "filter": filter_str,
-        "orderBy": "timestamp asc",
-        "pageSize": 500,
-    }
 
-    events = []
-    page_token = None
-    while True:
-        if page_token:
-            body["pageToken"] = page_token
-        result = api("logging", "v2").entries().list(body=body).execute()
-        for entry in result.get("entries", []):
-            method = (entry.get("protoPayload") or {}).get("methodName", "")
-            short = method.rsplit(".", 1)[-1] if method else ""
-            kind = None
-            if any(m.endswith(short) for m in START_METHODS) and short == "start":
-                kind = "start"
-            elif short in ("stop", "guestTerminate", "preempted"):
-                kind = "stop"
-            if kind:
-                events.append((datetime.fromisoformat(
-                    entry["timestamp"].replace("Z", "+00:00")), kind))
-        page_token = result.get("nextPageToken")
-        if not page_token:
-            break
-
-    events.sort(key=lambda e: e[0])
-    return events
-
-
-def uptime_seconds(events, start, end, currently_running):
-    """Fold start/stop events into running time inside the window."""
     total = 0.0
-    open_since = None
+    while request is not None:
+        result = request.execute()
+        for series in result.get("timeSeries", []):
+            for point in series.get("points", []):
+                value = point.get("value", {})
+                total += float(value.get("doubleValue")
+                               or value.get("int64Value") or 0)
+        request = api("monitoring", "v3").projects().timeSeries().list_next(
+            request, result)
 
-    # A stop as the first event means the VM was already up when the
-    # window opened; count from the window start.
-    if events and events[0][1] == "stop":
-        open_since = start
-    elif not events and currently_running:
-        open_since = start
-
-    for moment, kind in events:
-        if kind == "start" and open_since is None:
-            open_since = moment
-        elif kind == "stop" and open_since is not None:
-            total += (moment - open_since).total_seconds()
-            open_since = None
-
-    if open_since is not None:
-        total += (end - open_since).total_seconds()
     return int(total)
 
 
@@ -494,11 +463,13 @@ def action_billing(range_key, custom_from, custom_to):
                 "message": f"range={range_key} kenne ich nicht."}, 400
 
     inst = instance()
-    running = inst.get("status") == "RUNNING"
-    events = power_events(inst["id"], start, end)
-    seconds = uptime_seconds(events, start, end, running)
-    cost = round(seconds / 3600 * HOURLY_RATE, 2)
+    try:
+        seconds = measured_uptime(inst["id"], start, end)
+    except Exception as exc:  # noqa: BLE001 - surfaced so the cause is visible
+        return {"ok": False, "source": "monitoring",
+                "message": f"Laufzeit nicht abrufbar: {exc}"}, 502
 
+    cost = round(seconds / 3600 * HOURLY_RATE, 2)
     return {
         "ok": True,
         "range": range_key,
@@ -507,8 +478,9 @@ def action_billing(range_key, custom_from, custom_to):
         "uptimeSeconds": seconds,
         "hourlyRateEur": HOURLY_RATE,
         "totalEur": cost,
-        "events": len(events),
-        "message": f"{human_duration(seconds)} Laufzeit, rund {cost:.2f} EUR.",
+        "source": "cloud-monitoring",
+        "message": f"{human_duration(seconds)} gemessene Laufzeit, "
+                   f"rund {cost:.2f} EUR.",
     }, 200
 
 

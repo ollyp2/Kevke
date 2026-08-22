@@ -81,17 +81,18 @@ fun BillingScreen(vm: AppViewModel) {
 
         Panel {
             Text(
-                "Gerechnet wird Laufzeit mal Stundensatz. Die Platte kostet " +
-                    "zusaetzlich rund 1,60 EUR im Monat, auch wenn der Server aus ist.",
+                "Die Laufzeit ist von Google gemessen, nicht geschaetzt. " +
+                    "Der Betrag ist Laufzeit mal Stundensatz — die Platte " +
+                    "kostet zusaetzlich rund 1,60 EUR im Monat, auch wenn " +
+                    "der Server aus ist.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = c.onMuted,
             )
             if (RANGE_KEYS[rangeIndex] in listOf("quarter", "year")) {
                 Spacer(Modifier.height(10.dp))
                 Text(
-                    "Fuer lange Zeitraeume ist die Zahl zu niedrig: die " +
-                        "Ereignisse kommen aus dem Log, das nur 30 Tage " +
-                        "zurueckreicht.",
+                    "Fuer lange Zeitraeume faellt die Zahl zu niedrig aus: " +
+                        "Messwerte werden nur sechs Wochen vorgehalten.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = c.warn,
                 )
