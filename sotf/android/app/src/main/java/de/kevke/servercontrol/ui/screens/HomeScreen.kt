@@ -1,5 +1,7 @@
 package de.kevke.servercontrol.ui.screens
 
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -147,10 +149,8 @@ private fun InfoRow(label: String, value: String) {
 
 /** Tap target without the Material ripple — keeps the line-art look clean. */
 fun Modifier.clickableNoRipple(onClick: () -> Unit): Modifier = composed {
-    androidx.compose.foundation.clickable(
-        interactionSource = remember {
-            androidx.compose.foundation.interaction.MutableInteractionSource()
-        },
+    clickable(
+        interactionSource = remember { MutableInteractionSource() },
         indication = null,
         onClick = onClick,
     )

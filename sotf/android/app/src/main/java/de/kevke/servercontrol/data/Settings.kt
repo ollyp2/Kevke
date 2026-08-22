@@ -31,7 +31,10 @@ class Settings(context: Context) {
             ?.let { runCatching { json.decodeFromString<ControlConfig>(it) }.getOrNull() }
             ?: ControlConfig()
         set(value) {
-            prefs.edit().putString(KEY_CONFIG, json.encodeToString(value)).apply()
+            // Name the serializer explicitly — without it the compiler picks
+            // the member overload that wants a SerializationStrategy first.
+            val text = json.encodeToString(ControlConfig.serializer(), value)
+            prefs.edit().putString(KEY_CONFIG, text).apply()
         }
 
     var surfacePreset: SurfacePreset

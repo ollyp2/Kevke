@@ -1,5 +1,7 @@
 package de.kevke.servercontrol.ui.components
 
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
@@ -73,7 +75,7 @@ fun PowerButton(
     val pulseAlpha by pulse.animateFloat(
         initialValue = 0.35f,
         targetValue = 1f,
-        animationSpec = infiniteRepeatable(tween(900), androidx.compose.animation.core.RepeatMode.Reverse),
+        animationSpec = infiniteRepeatable(tween(900), RepeatMode.Reverse),
         label = "pulseAlpha",
     )
 
