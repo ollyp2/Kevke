@@ -22,8 +22,7 @@ import hmac
 import json
 import os
 import socket
-import struct
-import time
+from datetime import datetime, timezone
 
 import functions_framework
 from googleapiclient import discovery
@@ -160,6 +159,24 @@ def action_stop(force):
             "message": "Server faehrt herunter."}, 200
 
 
+def describe(state, game, uptime):
+    """One readable line, so the status link is useful in a browser too."""
+    if state != "RUNNING":
+        return {"TERMINATED": "Server ist aus.",
+                "STAGING": "Server startet gerade.",
+                "STOPPING": "Server faehrt herunter."}.get(state, f"Zustand: {state}")
+
+    if game is None:
+        return "VM laeuft, Welt laedt noch. Gleich koennt ihr joinen."
+
+    who = f"{game['players']} von {game['maxPlayers']} Spielern online"
+    if uptime is None:
+        return f"Server laeuft. {who}."
+    hours, minutes = uptime // 3600, (uptime % 3600) // 60
+    seit = f"{hours} h {minutes} min" if hours else f"{minutes} min"
+    return f"Server laeuft seit {seit}. {who}."
+
+
 def action_status():
     inst = instance()
     state = inst.get("status")
@@ -168,13 +185,15 @@ def action_status():
 
     uptime = None
     if state == "RUNNING" and inst.get("lastStartTimestamp"):
-        started = time.strptime(
-            inst["lastStartTimestamp"][:19], "%Y-%m-%dT%H:%M:%S")
-        uptime = max(0, int(time.time() - time.mktime(started)))
+        # The API stamps an offset ("…-07:00"); dropping it and letting
+        # mktime assume UTC silently added the offset to every reading.
+        started = datetime.fromisoformat(inst["lastStartTimestamp"])
+        uptime = max(0, int((datetime.now(timezone.utc) - started).total_seconds()))
 
     return {
         "ok": True,
         "state": state,
+        "message": describe(state, game, uptime),
         "externalIp": ip,
         "lastStart": inst.get("lastStartTimestamp"),
         "lastStop": inst.get("lastStopTimestamp"),
