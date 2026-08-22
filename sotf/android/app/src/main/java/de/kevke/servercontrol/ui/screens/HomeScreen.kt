@@ -19,104 +19,90 @@ import de.kevke.servercontrol.ui.theme.LocalAppColors
 fun HomeScreen(vm: AppViewModel, onOpenMenu: () -> Unit) {
     val c = LocalAppColors.current
     val status by vm.status.collectAsState()
-    val backups by vm.backups.collectAsState()
-    val busyMessage by vm.busyMessage.collectAsState()
+    val config by vm.config.collectAsState()
+    val message by vm.message.collectAsState()
+    val working by vm.working.collectAsState()
 
-    var backupsExpanded by remember { mutableStateOf(false) }
-    var pendingDelete by remember { mutableStateOf<String?>(null) }
-    var pendingRestore by remember { mutableStateOf<String?>(null) }
     var confirmStop by remember { mutableStateOf(false) }
 
+    LaunchedEffect(Unit) { vm.refreshStatus() }
+
     Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(20.dp),
+        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text(
-                    vm.activeServerName,
+                    config.label,
                     style = MaterialTheme.typography.titleLarge,
                     color = c.onBackground,
                 )
                 Spacer(Modifier.height(4.dp))
-                StatusLamp(status.state)
+                StatusLamp(status.lampState)
             }
             LineIcon(
                 LineIcons.Menu,
                 tint = c.onBackground,
-                modifier = Modifier
-                    .size(44.dp)
-                    .padding(10.dp)
-                    .then(Modifier)
-                    .clickableNoRipple(onOpenMenu),
+                size = 26.dp,
+                modifier = Modifier.clickableNoRipple(onOpenMenu),
             )
         }
 
-        Spacer(Modifier.height(36.dp))
+        Spacer(Modifier.height(40.dp))
 
         Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
             PowerButton(
-                running = status.isRunning,
-                busy = status.isBusy || busyMessage != null,
-                enabled = true,
-                onClick = {
-                    if (status.isRunning) confirmStop = true else vm.startServer()
-                },
+                running = status.gameReady,
+                busy = working || status.isBusy || (status.isRunning && !status.gameReady),
+                enabled = !working,
+                onClick = { if (status.isRunning) confirmStop = true else vm.start() },
             )
         }
-
-        Spacer(Modifier.height(16.dp))
-
-        busyMessage?.let {
-            Text(
-                it,
-                style = MaterialTheme.typography.bodyMedium,
-                color = c.warn,
-                modifier = Modifier.fillMaxWidth(),
-            )
-            Spacer(Modifier.height(8.dp))
-        }
-
-        InfoStrip(status.externalIp, status.playersOnline, status.idleShutdownIn)
 
         Spacer(Modifier.height(24.dp))
 
-        CollapsibleSection(
-            title = "Backups",
-            icon = LineIcons.Save,
-            expanded = backupsExpanded,
-            onToggle = {
-                backupsExpanded = !backupsExpanded
-                if (backupsExpanded) vm.refreshBackups()
-            },
-        ) {
-            LineButton(
-                label = "Jetzt speichern",
-                icon = LineIcons.Save,
-                modifier = Modifier.fillMaxWidth(),
-                onClick = { vm.createBackup() },
-            )
-            Spacer(Modifier.height(16.dp))
-
-            if (backups.isEmpty()) {
-                EmptyHint("Noch keine Backups")
-            } else {
-                backups.forEach { backup ->
-                    BackupRow(
-                        name = backup.name,
-                        subtitle = buildString {
-                            backup.worldName?.let { append(it); append(" · ") }
-                            backup.gameDays?.let { append("Tag $it"); append(" · ") }
-                            backup.sizeBytes?.let { append("${it / 1024} KB") }
-                        }.trimEnd(' ', '·'),
-                        onRestore = { pendingRestore = backup.name },
-                        onDelete = { pendingDelete = backup.name },
-                    )
-                    Spacer(Modifier.height(8.dp))
-                }
+        message?.let {
+            Panel {
+                Text(it, style = MaterialTheme.typography.bodyLarge, color = c.warn)
             }
+            Spacer(Modifier.height(16.dp))
+        }
+
+        Panel {
+            InfoRow("Adresse", status.externalIp ?: "—")
+            Spacer(Modifier.height(10.dp))
+            InfoRow(
+                "Spieler",
+                if (status.maxPlayers > 0) "${status.players} / ${status.maxPlayers}"
+                else status.players.toString(),
+            )
+            status.serverName?.let {
+                Spacer(Modifier.height(10.dp))
+                InfoRow("Servername", it)
+            }
+            status.uptimeSeconds?.let {
+                Spacer(Modifier.height(10.dp))
+                InfoRow("Laufzeit", formatUptime(it))
+            }
+
+            // RUNNING with a silent game port means the world is still loading;
+            // saying "online" there would just invite a failed join.
+            if (status.isRunning && !status.gameReady) {
+                Spacer(Modifier.height(12.dp))
+                Text(
+                    "VM laeuft, Welt laedt noch. Etwa 3 Minuten ab Start.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = c.warn,
+                )
+            }
+
+            Spacer(Modifier.height(16.dp))
+            LineButton(
+                label = "Status neu pruefen",
+                icon = LineIcons.Restore,
+                modifier = Modifier.fillMaxWidth(),
+                onClick = { vm.refreshStatus() },
+            )
         }
 
         Spacer(Modifier.height(32.dp))
@@ -125,87 +111,37 @@ fun HomeScreen(vm: AppViewModel, onOpenMenu: () -> Unit) {
     if (confirmStop) {
         ConfirmDialog(
             title = "Server ausschalten?",
-            message = if (status.playersOnline > 0)
-                "Es sind noch ${status.playersOnline} Spieler online. Trotzdem herunterfahren?"
+            message = if (status.players > 0)
+                "Es sind ${status.players} Spieler online. Trotzdem herunterfahren?"
             else
                 "Die VM wird gestoppt. Savegames bleiben erhalten.",
             confirmLabel = "Ausschalten",
             onConfirm = {
                 confirmStop = false
-                vm.stopServer(force = status.playersOnline > 0)
+                vm.stop(force = status.players > 0)
             },
             onDismiss = { confirmStop = false },
         )
     }
-
-    pendingRestore?.let { name ->
-        ConfirmDialog(
-            title = "Backup einspielen?",
-            message = "„$name“ ersetzt den aktuellen Spielstand. " +
-                "Vorher wird automatisch ein Sicherungs-Backup angelegt.",
-            confirmLabel = "Einspielen",
-            onConfirm = { vm.restoreBackup(name); pendingRestore = null },
-            onDismiss = { pendingRestore = null },
-        )
-    }
-
-    pendingDelete?.let { name ->
-        ConfirmDialog(
-            title = "Sicher?",
-            message = "Backup „$name“ wird endgueltig geloescht.",
-            onConfirm = { vm.deleteBackup(name); pendingDelete = null },
-            onDismiss = { pendingDelete = null },
-        )
-    }
 }
 
-@Composable
-private fun InfoStrip(ip: String?, players: Int, idleIn: Long?) {
-    val c = LocalAppColors.current
-    Panel {
-        InfoRow("Adresse", ip ?: "—")
-        Spacer(Modifier.height(10.dp))
-        InfoRow("Spieler online", players.toString())
-        idleIn?.let {
-            Spacer(Modifier.height(10.dp))
-            InfoRow("Auto-Aus in", "${it / 60} min")
-        }
-    }
+private fun formatUptime(seconds: Long): String {
+    val h = seconds / 3600
+    val m = (seconds % 3600) / 60
+    return if (h > 0) "${h} h ${m} min" else "${m} min"
 }
 
 @Composable
 private fun InfoRow(label: String, value: String) {
     val c = LocalAppColors.current
     Row(Modifier.fillMaxWidth()) {
-        Text(label, style = MaterialTheme.typography.bodyMedium, color = c.onMuted,
-             modifier = Modifier.weight(1f))
+        Text(
+            label,
+            style = MaterialTheme.typography.bodyMedium,
+            color = c.onMuted,
+            modifier = Modifier.weight(1f),
+        )
         Text(value, style = MaterialTheme.typography.bodyMedium, color = c.onBackground)
-    }
-}
-
-@Composable
-private fun BackupRow(
-    name: String,
-    subtitle: String,
-    onRestore: () -> Unit,
-    onDelete: () -> Unit,
-) {
-    val c = LocalAppColors.current
-    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.weight(1f)) {
-            Text(name, style = MaterialTheme.typography.bodyLarge, color = c.onBackground)
-            if (subtitle.isNotBlank()) {
-                Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = c.onMuted)
-            }
-        }
-        LineIcon(
-            LineIcons.Restore, tint = c.accent, size = 22.dp,
-            modifier = Modifier.padding(horizontal = 10.dp).clickableNoRipple(onRestore),
-        )
-        LineIcon(
-            LineIcons.Delete, tint = c.danger, size = 22.dp,
-            modifier = Modifier.padding(start = 6.dp).clickableNoRipple(onDelete),
-        )
     }
 }
 

@@ -1,7 +1,5 @@
 package de.kevke.servercontrol.ui.components
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
@@ -16,11 +14,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -59,47 +54,6 @@ fun Panel(
             .padding(16.dp),
         content = content,
     )
-}
-
-/** Section header with a chevron that rotates as the body expands. */
-@Composable
-fun CollapsibleSection(
-    title: String,
-    icon: ImageVector,
-    expanded: Boolean,
-    onToggle: () -> Unit,
-    content: @Composable ColumnScope.() -> Unit,
-) {
-    val c = LocalAppColors.current
-    val rotation by animateFloatAsState(if (expanded) 180f else 0f, label = "chevron")
-
-    Panel {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.fillMaxWidth().clickable(onClick = onToggle),
-        ) {
-            LineIcon(icon, tint = c.accent, size = 20.dp)
-            Spacer(Modifier.width(12.dp))
-            Text(
-                title,
-                style = MaterialTheme.typography.titleMedium,
-                color = c.onBackground,
-                modifier = Modifier.weight(1f),
-            )
-            LineIcon(
-                LineIcons.ChevronDown,
-                tint = c.onMuted,
-                size = 20.dp,
-                modifier = Modifier.graphicsLayer { rotationZ = rotation },
-            )
-        }
-        AnimatedVisibility(expanded) {
-            Column {
-                Spacer(Modifier.height(16.dp))
-                content()
-            }
-        }
-    }
 }
 
 /**
@@ -172,63 +126,6 @@ fun StatusLamp(state: String, modifier: Modifier = Modifier) {
         }
         Spacer(Modifier.width(8.dp))
         Text(label, style = MaterialTheme.typography.bodyMedium, color = c.onMuted)
-    }
-}
-
-/** Resource tile: big percentage plus a sparkline of recent history. */
-@Composable
-fun MetricTile(
-    label: String,
-    percent: Float?,
-    detail: String?,
-    history: List<Float>,
-    modifier: Modifier = Modifier,
-) {
-    val c = LocalAppColors.current
-    Panel(modifier) {
-        Text(label.uppercase(), style = MaterialTheme.typography.labelSmall, color = c.onMuted)
-        Spacer(Modifier.height(6.dp))
-        Row(verticalAlignment = Alignment.Bottom) {
-            Text(
-                percent?.let { "${it.toInt()}" } ?: "—",
-                style = MaterialTheme.typography.displayLarge,
-                color = c.onBackground,
-            )
-            Text(
-                "%",
-                style = MaterialTheme.typography.titleMedium,
-                color = c.onMuted,
-                modifier = Modifier.padding(bottom = 8.dp, start = 2.dp),
-            )
-        }
-        detail?.let {
-            Text(it, style = MaterialTheme.typography.bodyMedium, color = c.onMuted)
-        }
-        Spacer(Modifier.height(12.dp))
-        Sparkline(history, c.accent, Modifier.fillMaxWidth().height(48.dp))
-    }
-}
-
-@Composable
-fun Sparkline(values: List<Float>, color: Color, modifier: Modifier = Modifier) {
-    val c = LocalAppColors.current
-    Canvas(modifier) {
-        if (values.size < 2) return@Canvas
-        val maxV = (values.maxOrNull() ?: 100f).coerceAtLeast(1f)
-        val stepX = size.width / (values.size - 1)
-        val path = Path()
-        values.forEachIndexed { i, v ->
-            val x = i * stepX
-            val y = size.height - (v / maxV) * size.height
-            if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
-        }
-        drawLine(
-            color = c.outline,
-            start = Offset(0f, size.height),
-            end = Offset(size.width, size.height),
-            strokeWidth = 1f,
-        )
-        drawPath(path, color, style = Stroke(width = 2.dp.toPx()))
     }
 }
 

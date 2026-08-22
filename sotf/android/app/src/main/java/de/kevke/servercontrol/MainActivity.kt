@@ -6,42 +6,33 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberDrawerState
-import androidx.compose.material3.DrawerValue
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
-import androidx.compose.ui.graphics.vector.ImageVector
 import de.kevke.servercontrol.ui.components.LineIcon
 import de.kevke.servercontrol.ui.screens.*
 import de.kevke.servercontrol.ui.theme.*
 import kotlinx.coroutines.launch
 
-private data class MenuEntry(
-    val route: String,
-    val label: String,
-    val icon: ImageVector,
-)
+private data class MenuEntry(val route: String, val label: String, val icon: ImageVector)
 
 private val MENU = listOf(
     MenuEntry("home", "Start", LineIcons.Power),
-    MenuEntry("resources", "Ressourcen", LineIcons.Gauge),
-    MenuEntry("billing", "Kosten", LineIcons.Billing),
-    MenuEntry("worlds", "Welten", LineIcons.World),
-    MenuEntry("give", "Items geben", LineIcons.Item),
-    MenuEntry("teleport", "Teleport", LineIcons.Teleport),
-    MenuEntry("config", "Konfiguration", LineIcons.Sliders),
     MenuEntry("settings", "Einstellungen", LineIcons.Settings),
+    MenuEntry("setup", "Verbindung aendern", LineIcons.Server),
 )
 
 class MainActivity : ComponentActivity() {
@@ -67,14 +58,14 @@ private fun AppRoot(vm: AppViewModel) {
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
 
-    val start = if (vm.hasEndpoint) "picker" else "setup"
-
     ModalNavigationDrawer(
         drawerState = drawerState,
-        drawerContent = { DrawerBody(nav, drawerState.isOpen) { route ->
-            scope.launch { drawerState.close() }
-            nav.navigate(route) { launchSingleTop = true }
-        } },
+        drawerContent = {
+            DrawerBody { route ->
+                scope.launch { drawerState.close() }
+                nav.navigate(route) { launchSingleTop = true }
+            }
+        },
     ) {
         Box(
             Modifier
@@ -82,30 +73,21 @@ private fun AppRoot(vm: AppViewModel) {
                 .background(c.background)
                 .windowInsetsPadding(WindowInsets.systemBars),
         ) {
-            NavHost(navController = nav, startDestination = start) {
+            NavHost(
+                navController = nav,
+                startDestination = if (vm.isConfigured) "home" else "setup",
+            ) {
                 composable("setup") {
                     SetupScreen(vm) {
-                        nav.navigate("picker") { popUpTo("setup") { inclusive = true } }
+                        nav.navigate("home") { popUpTo("setup") { inclusive = true } }
                     }
-                }
-                composable("picker") {
-                    LaunchedEffect(Unit) { vm.loadServers() }
-                    ServerPickerScreen(
-                        vm,
-                        onPicked = { nav.navigate("home") },
-                        onAddNew = { nav.navigate("setup") },
-                    )
                 }
                 composable("home") {
                     HomeScreen(vm) { scope.launch { drawerState.open() } }
                 }
-                composable("resources") { Screen("Ressourcen", nav) { ResourcesScreen(vm) } }
-                composable("billing") { Screen("Kosten", nav) { BillingScreen(vm) } }
-                composable("worlds") { Screen("Welten", nav) { WorldsScreen(vm) } }
-                composable("give") { Screen("Items geben", nav) { GiveItemScreen(vm) } }
-                composable("teleport") { Screen("Teleport", nav) { TeleportScreen(vm) } }
-                composable("config") { Screen("Konfiguration", nav) { ConfigScreen(vm) } }
-                composable("settings") { Screen("Einstellungen", nav) { SettingsScreen(vm) } }
+                composable("settings") {
+                    SubScreen("Einstellungen", nav) { SettingsScreen(vm) }
+                }
             }
         }
     }
@@ -113,7 +95,7 @@ private fun AppRoot(vm: AppViewModel) {
 
 /** Sub-screen chrome: a back arrow and a title, nothing more. */
 @Composable
-private fun Screen(title: String, nav: NavHostController, content: @Composable () -> Unit) {
+private fun SubScreen(title: String, nav: NavHostController, content: @Composable () -> Unit) {
     val c = LocalAppColors.current
     Column(Modifier.fillMaxSize()) {
         Row(
@@ -134,18 +116,14 @@ private fun Screen(title: String, nav: NavHostController, content: @Composable (
 }
 
 @Composable
-private fun DrawerBody(
-    nav: NavHostController,
-    isOpen: Boolean,
-    onNavigate: (String) -> Unit,
-) {
+private fun DrawerBody(onNavigate: (String) -> Unit) {
     val c = LocalAppColors.current
     ModalDrawerSheet(
         drawerContainerColor = c.surface,
-        modifier = Modifier.fillMaxWidth(0.78f),
+        modifier = Modifier.fillMaxWidth(0.75f),
     ) {
         Column(Modifier.padding(20.dp)) {
-            Spacer(Modifier.height(24.dp))
+            Spacer(Modifier.height(32.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 LineIcon(LineIcons.Server, tint = c.accent, size = 28.dp)
                 Spacer(Modifier.width(12.dp))
@@ -155,7 +133,7 @@ private fun DrawerBody(
                     color = c.onBackground,
                 )
             }
-            Spacer(Modifier.height(28.dp))
+            Spacer(Modifier.height(32.dp))
 
             MENU.forEach { entry ->
                 Row(

@@ -12,6 +12,10 @@ import androidx.compose.ui.unit.dp
  * Line-art icon set. Every glyph is stroked, never filled — no emoji, no
  * solid pictograms. Strokes inherit tint via [SolidColor] on currentColor
  * at draw time, so a single definition works on any background.
+ *
+ * The set covers the planned screens too (backups, worlds, items, config),
+ * not just the ones already built; each glyph is `by lazy`, so the unused
+ * ones are never constructed.
  */
 private fun lineIcon(
     name: String,
