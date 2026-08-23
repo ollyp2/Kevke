@@ -55,10 +55,15 @@ im Browser und im Chat brauchbar bleiben.
 
 | # | Komponente | Pfad | Status |
 |---|---|---|---|
-| 1 | Control Function | `sotf/function/` | ✅ Code fertig, ⏳ nicht deployed |
-| 2 | Android-App | `sotf/android/` | ✅ Code fertig, ⏳ nicht gebaut |
+| 1 | Control Function | `sotf/function/` | ✅ deployed, im Betrieb |
+| 2 | Android-App | `sotf/android/` | ✅ gebaut und installiert |
 | 3 | DEVBOARD | `sotf/DEVBOARD.md` | ✅ |
 | 4 | Handoff-Doku | `sotf/HANDOFF.md` | ✅ |
+| 5 | Gesamtstand + To-dos | `sotf/STATE.md` | ✅ |
+
+**Der vollständige Stand inklusive der offenen Punkte steht in
+[`STATE.md`](STATE.md).** Dort auch die Liste der Dinge, die uns je eine
+ganze Runde gekostet haben — vor jeder Änderung einmal überfliegen.
 
 ## Feature-Matrix
 
@@ -74,8 +79,12 @@ im Browser und im Chat brauchbar bleiben.
 | Line-Art-Icons, keine Emoji | — | ✅ | ✅ |
 | Backup anlegen / listen / löschen | ✅ | ✅ | ⏳ |
 | Restore (Boot-Disk-Tausch) | ✅ | ✅ | ⏳ |
-| Kostenübersicht | ✅ | ✅ | ⏳ |
-| Self-Update über GitHub Releases | — | ✅ | ⏳ |
+| Kostenübersicht | ✅ | ✅ | ✅ |
+| Aufteilung pro Spieler | ✅ | ✅ | ✅ |
+| Sessions im Zeitraum | ✅ | ✅ | ⏳ |
+| Zeitraum umschaltbar (Tag…Jahr) | ✅ | ✅ | ⏳ |
+| Spieler umbenennen (Stift) | — | ✅ | ⏳ |
+| Self-Update über GitHub Releases | — | ✅ | ❌ Signatur, siehe STATE A1 |
 
 ## Wie die App sich selbst aktualisiert
 
@@ -113,12 +122,12 @@ Compute API brauchen nichts auf der VM und laufen auch, wenn sie aus ist.
 Der Preis ist Granularität — gesichert wird die ganze Platte, nicht nur
 `userdata`.
 
-### B2 — Kosten pro Spieler
-Die Gesamtkosten stehen. Für die Aufteilung nach Spielern müsste jemand
-regelmäßig festhalten, wer online war — die Function sieht das nur, wenn
-sie gerade gefragt wird. Machbar mit Cloud Scheduler alle 5 Minuten plus
-einer Log-Zeile pro Stichprobe, dann lässt sich dieselbe Intervall-Rechnung
-wie geplant darüberlegen.
+### B2 — Kosten pro Spieler — ✅ gelöst
+Nicht über Stichproben, sondern exakt: der Ops Agent schickt das
+Container-Log an Cloud Logging, und dort steht bei jedem Join und Leave
+die Steam-ID mitsamt Anzeigename. Keine Interpolation, keine Lücken
+zwischen Messpunkten. Die Steam-Query kam dafür nicht in Frage — SotF
+beantwortet A2S_PLAYER mit leeren Namensfeldern.
 
 ### B3 — Konsolen-Befehle (Item geben, Teleport)
 Der SotF-Dedicated-Server hat kein RCON. Es gibt keinen dokumentierten Weg,
@@ -141,6 +150,12 @@ ihm von außen Befehle zu schicken. Realistisch:
 
 ## Changelog
 
+- **2026-08-23** — Spieleridentität aus dem Container-Log statt aus der
+  Steam-Query, Kostenaufteilung nach Kevkes Zerlegung, Sessions und
+  umschaltbare Zeiträume. Fester Signaturschlüssel für die CI, weil
+  jeder Build bis dahin einen eigenen hatte und der Selbst-Updater
+  deshalb nie installieren konnte. `deploy.sh` lehnt Platzhalter-Token
+  ab. Gesamtstand in `STATE.md` festgehalten.
 - **2026-08-22** — Backups (Disk-Snapshots), Kostenübersicht und
   Self-Update über GitHub Releases. Function-Timeout auf 540 s wegen des
   Boot-Disk-Tauschs beim Restore; `roles/logging.viewer` dazu, weil die

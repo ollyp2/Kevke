@@ -94,7 +94,7 @@ direkt gemeldet, nichts wird blind gespeichert.
 
 ## Wichtig: alten Token wechseln
 
-`420LangeHaareUhh` steht inzwischen in unserem Chatverlauf. Der neue
+Der urspruengliche Token steht inzwischen im Chatverlauf. Der neue
 Token aus Schritt 1 ersetzt ihn. Räum die alte Function danach weg:
 
 ```bash
