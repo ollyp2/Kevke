@@ -77,6 +77,79 @@ fun BillingScreen(vm: AppViewModel) {
             }
         }
 
+        Spacer(Modifier.height(24.dp))
+        Text("PRO SPIELER", style = MaterialTheme.typography.labelSmall, color = c.onMuted)
+        Spacer(Modifier.height(12.dp))
+
+        if (billing.perPlayer.isEmpty()) {
+            Panel {
+                Text(
+                    "Noch keine Messwerte. Die Aufteilung braucht Stichproben, " +
+                        "die alle paar Minuten festhalten, wer online ist.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = c.onMuted,
+                )
+            }
+        } else {
+            billing.perPlayer.forEach { player ->
+                Panel(Modifier.padding(bottom = 10.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text(player.name, style = MaterialTheme.typography.bodyLarge,
+                                 color = c.onBackground)
+                            Text(duration(player.seconds),
+                                 style = MaterialTheme.typography.bodyMedium,
+                                 color = c.onMuted)
+                        }
+                        Text("${money(player.eur)} EUR",
+                             style = MaterialTheme.typography.titleMedium, color = c.accent)
+                    }
+                    if (player.buckets.isNotEmpty()) {
+                        Spacer(Modifier.height(10.dp))
+                        // One line per crowd size, so it is visible where a
+                        // share came from: alone costs full rate, two split it.
+                        player.buckets.entries
+                            .sortedBy { it.key.toIntOrNull() ?: 0 }
+                            .forEach { (crowd, seconds) ->
+                                Row(Modifier.fillMaxWidth().padding(vertical = 1.dp)) {
+                                    Text(
+                                        when (crowd) {
+                                            "1" -> "allein"
+                                            "2" -> "zu zweit"
+                                            "3" -> "zu dritt"
+                                            else -> "zu $crowd"
+                                        },
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = c.onMuted,
+                                        modifier = Modifier.weight(1f),
+                                    )
+                                    Text(duration(seconds),
+                                         style = MaterialTheme.typography.bodyMedium,
+                                         color = c.onMuted)
+                                }
+                            }
+                    }
+                }
+            }
+
+            if (billing.unattributedEur > 0.005) {
+                Panel(Modifier.padding(bottom = 10.dp)) {
+                    Row {
+                        Column(Modifier.weight(1f)) {
+                            Text("Niemand drauf",
+                                 style = MaterialTheme.typography.bodyLarge,
+                                 color = c.onBackground)
+                            Text("Hochfahren und Leerlauf bis zum Auto-Aus",
+                                 style = MaterialTheme.typography.bodyMedium,
+                                 color = c.onMuted)
+                        }
+                        Text("${money(billing.unattributedEur)} EUR",
+                             style = MaterialTheme.typography.titleMedium, color = c.onMuted)
+                    }
+                }
+            }
+        }
+
         Spacer(Modifier.height(20.dp))
 
         Panel {

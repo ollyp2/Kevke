@@ -108,6 +108,15 @@ class ControlClient(private val baseUrl: String, private val token: String) {
     // ---- billing ---------------------------------------------------------
 
     @Serializable
+    data class PlayerShare(
+        val name: String,
+        val seconds: Long = 0,
+        val eur: Double = 0.0,
+        /** Seconds spent while N players were on, keyed by N. */
+        val buckets: Map<String, Long> = emptyMap(),
+    )
+
+    @Serializable
     data class Billing(
         val ok: Boolean = false,
         val message: String = "",
@@ -117,7 +126,10 @@ class ControlClient(private val baseUrl: String, private val token: String) {
         val uptimeSeconds: Long = 0,
         val hourlyRateEur: Double = 0.0,
         val totalEur: Double = 0.0,
-        val events: Int = 0,
+        val source: String = "",
+        val perPlayer: List<PlayerShare> = emptyList(),
+        val unattributedSeconds: Long = 0,
+        val unattributedEur: Double = 0.0,
     )
 
     suspend fun billing(range: String): Billing = withContext(Dispatchers.IO) {

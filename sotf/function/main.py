@@ -105,6 +105,46 @@ def wait_for_op(operation, timeout=240):
 # --------------------------------------------------------------------------
 
 A2S_INFO = b"\xff\xff\xff\xffTSource Engine Query\x00"
+A2S_PLAYER = b"\xff\xff\xff\xff\x55\xff\xff\xff\xff"
+
+
+def query_players(host, port, timeout=2.0):
+    """Names of everyone currently connected, or None if unsupported.
+
+    A2S_PLAYER returns display names only — Steam IDs never leave the
+    server over this protocol. Names are what we can bill against.
+    """
+    if not host:
+        return None
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+            sock.settimeout(timeout)
+            sock.sendto(A2S_PLAYER, (host, port))
+            data, _ = sock.recvfrom(4096)
+
+            if len(data) > 4 and data[4:5] == b"A":
+                sock.sendto(A2S_PLAYER[:5] + data[5:9], (host, port))
+                data, _ = sock.recvfrom(4096)
+
+            if len(data) < 6 or data[4:5] != b"D":
+                return None
+            return parse_players(data)
+    except (socket.timeout, OSError):
+        return None
+
+
+def parse_players(data):
+    count = data[5]
+    pos = 6
+    names = []
+    for _ in range(count):
+        if pos >= len(data):
+            break
+        pos += 1  # per-player index byte, always zero in practice
+        end = data.index(b"\x00", pos)
+        names.append(data[pos:end].decode("utf-8", "replace"))
+        pos = end + 1 + 8  # skip the name terminator, score and duration
+    return [n for n in names if n]
 
 
 def query_game(host, port, timeout=2.0):
@@ -449,6 +489,137 @@ def measured_uptime(instance_id, start, end):
     return int(total)
 
 
+# --------------------------------------------------------------------------
+# per-player split
+#
+# Kevke's decomposition: your bill is the sum of one bucket per crowd
+# size. Time you spent alone costs full rate, time with one other costs
+# half, with two others a third:
+#
+#     S = A + B + C + …          A = M/L·G   B = M/L·G/2   C = M/L·G/3
+#
+# Since G/L is just the hourly rate, a second spent with n players on the
+# server costs each of them rate/n — so the shares add up to exactly what
+# the populated time cost, and idle time stays unattributed.
+#
+# The raw material is a sample every few minutes, written to Cloud
+# Logging by action=sample and read back here. Nothing before the first
+# sample can be reconstructed.
+# --------------------------------------------------------------------------
+
+SAMPLE_TAG = "sotf-sample"
+
+
+def action_sample():
+    """Record who is online right now. Meant for Cloud Scheduler."""
+    inst = instance()
+    if inst.get("status") != "RUNNING":
+        return {"ok": True, "sampled": False,
+                "message": "Server ist aus, nichts zu messen."}, 200
+
+    ip = external_ip(inst)
+    info = query_game(ip, QUERY_PORT)
+    if info is None:
+        return {"ok": True, "sampled": False,
+                "message": "Welt laedt noch, nichts zu messen."}, 200
+
+    names = query_players(ip, QUERY_PORT)
+
+    # Structured stdout becomes jsonPayload in Cloud Logging, which is
+    # what the billing query reads back — no extra store to provision.
+    print(json.dumps({
+        "type": SAMPLE_TAG,
+        "at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        "count": info["players"],
+        "names": names if names is not None else [],
+        "namesAvailable": names is not None,
+    }))
+
+    who = ", ".join(names) if names else f"{info['players']} Spieler"
+    return {"ok": True, "sampled": True, "count": info["players"],
+            "names": names or [], "namesAvailable": names is not None,
+            "message": f"Gemessen: {who}."}, 200
+
+
+def read_samples(start, end):
+    """Samples in the window, oldest first."""
+    filter_str = (
+        f'resource.type="cloud_run_revision" '
+        f'jsonPayload.type="{SAMPLE_TAG}" '
+        f'timestamp>="{start.isoformat().replace("+00:00", "Z")}" '
+        f'timestamp<="{end.isoformat().replace("+00:00", "Z")}"'
+    )
+    body = {
+        "resourceNames": [f"projects/{PROJECT_ID}"],
+        "filter": filter_str,
+        "orderBy": "timestamp asc",
+        "pageSize": 1000,
+    }
+
+    samples = []
+    page_token = None
+    while True:
+        if page_token:
+            body["pageToken"] = page_token
+        result = api("logging", "v2").entries().list(body=body).execute()
+        for entry in result.get("entries", []):
+            payload = entry.get("jsonPayload") or {}
+            samples.append({
+                "at": datetime.fromisoformat(
+                    entry["timestamp"].replace("Z", "+00:00")),
+                "count": int(payload.get("count") or 0),
+                "names": list(payload.get("names") or []),
+            })
+        page_token = result.get("nextPageToken")
+        if not page_token:
+            break
+    return samples
+
+
+def split_by_player(samples, rate_per_second, max_gap_seconds=900):
+    """Turn samples into per-player euros using the bucket formula.
+
+    Each sample stands for the stretch since the previous one. A gap
+    longer than max_gap_seconds means the sampler was not running, so
+    that stretch is skipped rather than guessed at.
+    """
+    per_player = {}
+    counted = 0.0
+    previous = None
+
+    for sample in samples:
+        if previous is not None:
+            span = (sample["at"] - previous["at"]).total_seconds()
+            if 0 < span <= max_gap_seconds:
+                # Attribute the span to whoever the earlier sample saw.
+                names = previous["names"]
+                crowd = len(names) or previous["count"]
+                if crowd > 0 and names:
+                    counted += span
+                    share = span * rate_per_second / crowd
+                    for name in names:
+                        slot = per_player.setdefault(
+                            name, {"seconds": 0.0, "eur": 0.0, "buckets": {}})
+                        slot["seconds"] += span
+                        slot["eur"] += share
+                        key = str(crowd)
+                        slot["buckets"][key] = slot["buckets"].get(key, 0.0) + span
+        previous = sample
+
+    players = [
+        {
+            "name": name,
+            "seconds": int(slot["seconds"]),
+            "eur": round(slot["eur"], 2),
+            # seconds spent with n players on, keyed by n
+            "buckets": {k: int(v) for k, v in sorted(slot["buckets"].items())},
+        }
+        for name, slot in per_player.items()
+    ]
+    players.sort(key=lambda p: p["eur"], reverse=True)
+    return players, int(counted)
+
+
 def action_billing(range_key, custom_from, custom_to):
     end = datetime.now(timezone.utc)
     if range_key == "custom":
@@ -469,7 +640,17 @@ def action_billing(range_key, custom_from, custom_to):
         return {"ok": False, "source": "monitoring",
                 "message": f"Laufzeit nicht abrufbar: {exc}"}, 502
 
-    cost = round(seconds / 3600 * HOURLY_RATE, 2)
+    rate_per_second = HOURLY_RATE / 3600
+    cost = round(seconds * rate_per_second, 2)
+
+    players, attributed = split_by_player(
+        read_samples(start, end), rate_per_second)
+    idle = max(0, seconds - attributed)
+
+    summary = f"{human_duration(seconds)} gemessene Laufzeit, rund {cost:.2f} EUR."
+    if players:
+        summary += " " + ", ".join(f"{p['name']}: {p['eur']:.2f}" for p in players)
+
     return {
         "ok": True,
         "range": range_key,
@@ -479,8 +660,10 @@ def action_billing(range_key, custom_from, custom_to):
         "hourlyRateEur": HOURLY_RATE,
         "totalEur": cost,
         "source": "cloud-monitoring",
-        "message": f"{human_duration(seconds)} gemessene Laufzeit, "
-                   f"rund {cost:.2f} EUR.",
+        "perPlayer": players,
+        "unattributedSeconds": idle,
+        "unattributedEur": round(idle * rate_per_second, 2),
+        "message": summary,
     }, 200
 
 
@@ -511,6 +694,8 @@ def sotf_control(request):
             payload, code = action_restore(name)
         elif action == "delete_backup":
             payload, code = action_delete_backup(name)
+        elif action == "sample":
+            payload, code = action_sample()
         elif action == "billing":
             payload, code = action_billing(
                 request.args.get("range", "month"),

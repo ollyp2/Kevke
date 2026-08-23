@@ -30,7 +30,7 @@ echo
 echo "== granting roles to $SA =="
 # compute.instanceAdmin.v1 covers start/stop plus snapshot and disk work;
 # monitoring.viewer lets the billing action read the uptime metric.
-for ROLE in roles/compute.instanceAdmin.v1 roles/monitoring.viewer; do
+for ROLE in roles/compute.instanceAdmin.v1 roles/monitoring.viewer roles/logging.viewer; do
   gcloud projects add-iam-policy-binding "$PROJECT" \
     --member="serviceAccount:${SA}" \
     --role="$ROLE" \
