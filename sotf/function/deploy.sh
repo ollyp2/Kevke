@@ -13,11 +13,29 @@ INSTANCE="${INSTANCE:-sotf-server}"
 NAME="${NAME:-sotf-control}"
 HOURLY_RATE="${HOURLY_RATE:-0.17}"
 
+# The token is the only thing between the open internet and a function
+# that can stop the VM and delete backups, so it is checked rather than
+# trusted. A placeholder copied out of a chat message once made it all
+# the way into a live deploy; that must fail here, not in production.
 if [[ -z "${TOKEN:-}" ]]; then
   echo "TOKEN not set. Generate one (and keep it out of git):" >&2
   echo "  export TOKEN=\$(openssl rand -hex 24)" >&2
   exit 1
 fi
+
+if [[ ${#TOKEN} -lt 20 ]]; then
+  echo "TOKEN is only ${#TOKEN} characters. Use at least 20:" >&2
+  echo "  export TOKEN=\$(openssl rand -hex 24)" >&2
+  exit 1
+fi
+
+case "${TOKEN,,}" in
+  *dein_token*|*your_token*|*changeme*|*platzhalter*|*placeholder*|*token*|*secret*|*password*|*passwort*)
+    echo "TOKEN looks like a placeholder, not a secret. Generate a real one:" >&2
+    echo "  export TOKEN=\$(openssl rand -hex 24)" >&2
+    exit 1
+    ;;
+esac
 
 PROJNUM="$(gcloud projects describe "$PROJECT" --format='value(projectNumber)')"
 SA="${PROJNUM}-compute@developer.gserviceaccount.com"
@@ -74,4 +92,6 @@ for A in start stop status backups billing; do
 done
 echo
 echo "Backup anlegen:  $URL?token=$TOKEN&action=backup&label=vor-dem-bunker"
-echo "Zuruecksetzen:   $URL?token=$TOKEN&action=restore&name=<backup-name>"
+# No angle-bracket placeholder here: a shell reads "<" as a redirection,
+# so a line like that pasted whole does something other than it reads.
+echo "Zuruecksetzen:   $URL?token=$TOKEN&action=restore&name=NAME-AUS-DER-BACKUP-LISTE"
