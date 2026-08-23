@@ -26,3 +26,9 @@ sotf/android/local.properties
 # Secrets — never commit
 sotf/.env
 *-sa.json
+
+# Signing keys never belong in the repo — the release keystore lives in
+# the KEYSTORE_BASE64 GitHub secret and nowhere else.
+*.jks
+*.keystore
+*.p12
