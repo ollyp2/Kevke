@@ -28,9 +28,11 @@ gcloud services enable monitoring.googleapis.com --project="$PROJECT"
 
 echo
 echo "== granting roles to $SA =="
-# compute.instanceAdmin.v1 covers start/stop plus snapshot and disk work;
-# monitoring.viewer lets the billing action read the uptime metric.
-for ROLE in roles/compute.instanceAdmin.v1 roles/monitoring.viewer roles/logging.viewer; do
+# compute.instanceAdmin.v1 covers start/stop plus snapshot and disk work,
+# monitoring.viewer reads the measured uptime, logging.viewer reads the
+# container log the per-player split is built from, and logWriter lets
+# the VM's own agent ship that log in the first place.
+for ROLE in roles/compute.instanceAdmin.v1 roles/monitoring.viewer roles/logging.viewer roles/logging.logWriter; do
   gcloud projects add-iam-policy-binding "$PROJECT" \
     --member="serviceAccount:${SA}" \
     --role="$ROLE" \
