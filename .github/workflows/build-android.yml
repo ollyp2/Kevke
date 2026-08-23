@@ -33,9 +33,30 @@ jobs:
       - name: Generate Gradle wrapper
         run: gradle wrapper --gradle-version 8.9
 
+      # Android refuses an update signed with a different key than the
+      # installed app, and the runner mints a fresh debug keystore on
+      # every run. Without this the in-app updater can never install
+      # anything — each build looks like a foreign app.
+      - name: Restore signing key
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/signing.jks"
+            echo "KEYSTORE_PATH=$RUNNER_TEMP/signing.jks" >> "$GITHUB_ENV"
+          else
+            # A silent fallback would publish a release nobody can install
+            # as an update, so say it out loud in the job log.
+            echo "::warning::KEYSTORE_BASE64 secret missing - built with the runner's throwaway debug key. This APK cannot be installed as an update over an existing install."
+          fi
+
       # The run number becomes versionCode, so releases are strictly
       # ordered and the app can tell "newer" from "same".
       - name: Build debug APK
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: ./gradlew assembleDebug -PbuildNumber=${{ github.run_number }} --stacktrace
 
       - name: Rename APK

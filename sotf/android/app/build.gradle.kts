@@ -24,7 +24,30 @@ android {
         buildConfigField("String", "VERSION_LABEL", "\"0.2.0-$build\"")
     }
 
+    // Android only accepts an update signed with the same key as the
+    // installed app. Without a fixed key every CI run produces a fresh
+    // debug keystore, so each build reads as a different app and the
+    // in-app updater can never install anything.
+    signingConfigs {
+        create("stable") {
+            val store = System.getenv("KEYSTORE_PATH")
+            if (!store.isNullOrBlank()) {
+                storeFile = file(store)
+                storePassword = System.getenv("KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("KEY_ALIAS")
+                keyPassword = System.getenv("KEY_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
+        // Signed with the stable key when CI supplies one; a local build
+        // without the environment falls back to the usual debug key.
+        debug {
+            if (!System.getenv("KEYSTORE_PATH").isNullOrBlank()) {
+                signingConfig = signingConfigs.getByName("stable")
+            }
+        }
         release {
             isMinifyEnabled = false
         }
