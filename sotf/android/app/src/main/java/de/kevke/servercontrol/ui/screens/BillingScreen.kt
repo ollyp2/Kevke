@@ -2,16 +2,23 @@ package de.kevke.servercontrol.ui.screens
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import de.kevke.servercontrol.AppViewModel
+import de.kevke.servercontrol.net.ControlClient
+import de.kevke.servercontrol.ui.components.LineIcon
 import de.kevke.servercontrol.ui.components.Panel
 import de.kevke.servercontrol.ui.components.SegmentedRow
+import de.kevke.servercontrol.ui.theme.CornerRadius
+import de.kevke.servercontrol.ui.theme.LineIcons
 import de.kevke.servercontrol.ui.theme.LocalAppColors
 import java.util.Locale
 
@@ -22,9 +29,20 @@ private val RANGE_LABELS = listOf("Tag", "Woche", "Monat", "Quartal", "Jahr")
 fun BillingScreen(vm: AppViewModel) {
     val c = LocalAppColors.current
     val billing by vm.billing.collectAsState()
+    val aliases by vm.aliases.collectAsState()
     var rangeIndex by remember { mutableIntStateOf(2) }
+    var renaming by remember { mutableStateOf<ControlClient.PlayerShare?>(null) }
 
     LaunchedEffect(rangeIndex) { vm.refreshBilling(RANGE_KEYS[rangeIndex]) }
+
+    renaming?.let { player ->
+        RenameDialog(
+            steamName = player.name,
+            current = aliases[player.steamId] ?: "",
+            onSave = { vm.setAlias(player.steamId, it); renaming = null },
+            onDismiss = { renaming = null },
+        )
+    }
 
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp),
@@ -95,12 +113,27 @@ fun BillingScreen(vm: AppViewModel) {
                 Panel(Modifier.padding(bottom = 10.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
-                            Text(player.name, style = MaterialTheme.typography.bodyLarge,
-                                 color = c.onBackground)
-                            Text(duration(player.seconds),
-                                 style = MaterialTheme.typography.bodyMedium,
-                                 color = c.onMuted)
+                            Text(
+                                aliases[player.steamId] ?: player.name,
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = c.onBackground,
+                            )
+                            Text(
+                                duration(player.seconds) +
+                                    // Keep the Steam name visible once an
+                                    // alias hides it, so the row stays
+                                    // traceable back to a real account.
+                                    (aliases[player.steamId]?.let { " · ${player.name}" } ?: ""),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = c.onMuted,
+                            )
                         }
+                        LineIcon(
+                            LineIcons.Pencil, tint = c.onMuted, size = 18.dp,
+                            modifier = Modifier
+                                .padding(end = 12.dp)
+                                .clickableNoRipple { renaming = player },
+                        )
                         Text("${money(player.eur)} EUR",
                              style = MaterialTheme.typography.titleMedium, color = c.accent)
                     }
@@ -174,6 +207,49 @@ fun BillingScreen(vm: AppViewModel) {
 
         Spacer(Modifier.height(32.dp))
     }
+}
+
+@Composable
+private fun RenameDialog(
+    steamName: String,
+    current: String,
+    onSave: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val c = LocalAppColors.current
+    var text by remember { mutableStateOf(current) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = c.surfaceRaised,
+        shape = RoundedCornerShape(CornerRadius),
+        title = { Text("Umbenennen", color = c.onBackground) },
+        text = {
+            Column {
+                Text(
+                    "Heisst im Spiel „$steamName“.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = c.onMuted,
+                )
+                Spacer(Modifier.height(14.dp))
+                TextField(text, { text = it }, steamName)
+                Spacer(Modifier.height(10.dp))
+                Text(
+                    "Leer lassen, um wieder den Spielnamen zu zeigen.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = c.onMuted,
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onSave(text) }) {
+                Text("Speichern", color = c.accent)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Abbrechen", color = c.onMuted) }
+        },
+    )
 }
 
 private fun money(value: Double) = String.format(Locale.GERMANY, "%.2f", value)

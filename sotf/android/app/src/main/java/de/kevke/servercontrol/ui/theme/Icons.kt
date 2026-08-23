@@ -315,6 +315,20 @@ object LineIcons {
         }
     }
 
+    /** Pencil — rename. */
+    val Pencil: ImageVector by lazy {
+        lineIcon("Pencil") {
+            stroke {
+                moveTo(4f, 20f); lineTo(4.8f, 16.2f); lineTo(16.2f, 4.8f)
+                arcToRelative(2f, 2f, 0f, false, true, 2.8f, 0f)
+                lineTo(19.2f, 5f)
+                arcToRelative(2f, 2f, 0f, false, true, 0f, 2.8f)
+                lineTo(7.8f, 19.2f); close()
+            }
+            stroke { moveTo(14.5f, 6.5f); lineTo(17.5f, 9.5f) }
+        }
+    }
+
     /** Server rack — generic server logo. */
     val Server: ImageVector by lazy {
         lineIcon("Server") {

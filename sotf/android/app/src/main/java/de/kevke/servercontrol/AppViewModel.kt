@@ -208,6 +208,22 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    // ---- player aliases --------------------------------------------------
+
+    private val _aliases = MutableStateFlow(settings.aliases)
+    val aliases: StateFlow<Map<String, String>> = _aliases.asStateFlow()
+
+    /** Blank clears the override and the log's own name shows again. */
+    fun setAlias(steamId: String, name: String) {
+        val trimmed = name.trim()
+        settings.aliases = if (trimmed.isEmpty()) {
+            settings.aliases - steamId
+        } else {
+            settings.aliases + (steamId to trimmed)
+        }
+        _aliases.value = settings.aliases
+    }
+
     // ---- self-update -----------------------------------------------------
 
     fun checkForUpdate(announceWhenCurrent: Boolean = false) {

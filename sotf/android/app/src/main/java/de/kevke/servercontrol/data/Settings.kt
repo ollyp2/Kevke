@@ -6,6 +6,8 @@ import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 import de.kevke.servercontrol.ui.theme.AccentPreset
 import de.kevke.servercontrol.ui.theme.SurfacePreset
+import kotlinx.serialization.builtins.MapSerializer
+import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.json.Json
 
 /**
@@ -37,6 +39,25 @@ class Settings(context: Context) {
             prefs.edit().putString(KEY_CONFIG, text).apply()
         }
 
+    /**
+     * Steam ID -> the name you'd rather see. The log already carries the
+     * player's Steam display name, so this only exists to override it —
+     * empty by default, and clearing an entry falls back to the log.
+     */
+    var aliases: Map<String, String>
+        get() = prefs.getString(KEY_ALIASES, null)
+            ?.let {
+                runCatching {
+                    json.decodeFromString<Map<String, String>>(it)
+                }.getOrNull()
+            }
+            ?: emptyMap()
+        set(value) {
+            val text = json.encodeToString(
+                MapSerializer(String.serializer(), String.serializer()), value)
+            prefs.edit().putString(KEY_ALIASES, text).apply()
+        }
+
     var surfacePreset: SurfacePreset
         get() = prefs.getString(KEY_SURFACE, null)
             ?.let { name -> SurfacePreset.entries.firstOrNull { it.name == name } }
@@ -51,6 +72,7 @@ class Settings(context: Context) {
 
     private companion object {
         const val KEY_CONFIG = "control_config"
+        const val KEY_ALIASES = "player_aliases"
         const val KEY_SURFACE = "surface_preset"
         const val KEY_ACCENT = "accent_preset"
     }
