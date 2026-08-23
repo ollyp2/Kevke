@@ -421,36 +421,78 @@ RANGE_PRESETS = {
 
 UPTIME_METRIC = "compute.googleapis.com/instance/uptime"
 
+# How finely to slice the uptime metric per range. Short windows get a
+# fine grid so session edges land close to the real start and stop; long
+# ones get a coarse grid to keep the number of points sane.
+ALIGNMENT = {
+    "day": 300, "week": 900, "month": 3600,
+    "quarter": 21600, "year": 21600, "custom": 3600,
+}
 
-def measured_uptime(instance_id, start, end):
-    """Seconds the instance actually ran, straight from Monitoring.
 
-    instance/uptime is a DELTA metric in seconds; summing it per hour and
-    adding the buckets gives the running time in the window.
+def uptime_buckets(instance_id, start, end, alignment_seconds):
+    """(bucket_start, seconds_running) pairs, oldest first.
+
+    instance/uptime is a DELTA metric in seconds, so a bucket's value is
+    how long the VM ran during it — zero means it was off.
     """
-    request = api("monitoring", "v3").projects().timeSeries().list(
+    monitoring = api("monitoring", "v3").projects().timeSeries()
+    request = monitoring.list(
         name=f"projects/{PROJECT_ID}",
         filter=(f'metric.type="{UPTIME_METRIC}" AND '
                 f'resource.labels.instance_id="{instance_id}"'),
         interval_startTime=start.isoformat().replace("+00:00", "Z"),
         interval_endTime=end.isoformat().replace("+00:00", "Z"),
-        aggregation_alignmentPeriod="3600s",
+        aggregation_alignmentPeriod=f"{alignment_seconds}s",
         aggregation_perSeriesAligner="ALIGN_SUM",
         view="FULL",
     )
 
-    total = 0.0
+    buckets = {}
     while request is not None:
         result = request.execute()
         for series in result.get("timeSeries", []):
             for point in series.get("points", []):
+                moment = parse_log_time(
+                    (point.get("interval") or {}).get("endTime"))
+                if moment is None:
+                    continue
                 value = point.get("value", {})
-                total += float(value.get("doubleValue")
-                               or value.get("int64Value") or 0)
-        request = api("monitoring", "v3").projects().timeSeries().list_next(
-            request, result)
+                seconds = float(value.get("doubleValue")
+                                or value.get("int64Value") or 0)
+                buckets[moment] = buckets.get(moment, 0.0) + seconds
+        request = monitoring.list_next(request, result)
 
-    return int(total)
+    return sorted(buckets.items())
+
+
+def find_sessions(buckets, alignment_seconds, gap_tolerance=1):
+    """Group consecutive running buckets into (from, to) spans.
+
+    A single empty bucket is tolerated so a brief dip in reporting does
+    not split one evening of play into two sessions.
+    """
+    sessions = []
+    open_from = None
+    last_running = None
+    empty_run = 0
+
+    for moment, seconds in buckets:
+        if seconds > 0:
+            if open_from is None:
+                open_from = moment - timedelta(seconds=alignment_seconds)
+            last_running = moment
+            empty_run = 0
+        elif open_from is not None:
+            empty_run += 1
+            if empty_run > gap_tolerance:
+                sessions.append((open_from, last_running))
+                open_from = None
+                empty_run = 0
+
+    if open_from is not None:
+        sessions.append((open_from, last_running))
+    return sessions
 
 
 # --------------------------------------------------------------------------
@@ -620,19 +662,40 @@ def action_billing(range_key, custom_from, custom_to):
         return {"ok": False,
                 "message": f"range={range_key} kenne ich nicht."}, 400
 
+    alignment = ALIGNMENT.get(range_key, 3600)
     inst = instance()
     try:
-        seconds = measured_uptime(inst["id"], start, end)
+        buckets = uptime_buckets(inst["id"], start, end, alignment)
     except Exception as exc:  # noqa: BLE001 - surfaced so the cause is visible
         return {"ok": False, "source": "monitoring",
                 "message": f"Laufzeit nicht abrufbar: {exc}"}, 502
 
+    seconds = int(sum(value for _, value in buckets))
     rate_per_second = HOURLY_RATE / 3600
     cost = round(seconds * rate_per_second, 2)
 
-    players, attributed = split_by_player(
-        player_events(start, end), start, end, rate_per_second)
+    # Fetch the join/leave log once, then reuse it for the whole range and
+    # for each session inside it.
+    events = player_events(start, end)
+    players, attributed = split_by_player(events, start, end, rate_per_second)
     idle = max(0, seconds - attributed)
+
+    sessions = []
+    for span_from, span_to in find_sessions(buckets, alignment):
+        span_seconds = int(sum(
+            value for moment, value in buckets
+            if span_from < moment <= span_to))
+        span_players, _ = split_by_player(
+            [e for e in events if span_from <= e[0] <= span_to],
+            span_from, span_to, rate_per_second)
+        sessions.append({
+            "from": span_from.isoformat().replace("+00:00", "Z"),
+            "to": span_to.isoformat().replace("+00:00", "Z"),
+            "uptimeSeconds": span_seconds,
+            "totalEur": round(span_seconds * rate_per_second, 2),
+            "perPlayer": span_players,
+        })
+    sessions.reverse()  # newest first, which is what you want to see
 
     summary = f"{human_duration(seconds)} gemessene Laufzeit, rund {cost:.2f} EUR."
     if players:
@@ -650,6 +713,7 @@ def action_billing(range_key, custom_from, custom_to):
         "perPlayer": players,
         "unattributedSeconds": idle,
         "unattributedEur": round(idle * rate_per_second, 2),
+        "sessions": sessions,
         "message": summary,
     }, 200
 

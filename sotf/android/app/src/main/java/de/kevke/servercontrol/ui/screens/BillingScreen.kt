@@ -20,6 +20,10 @@ import de.kevke.servercontrol.ui.components.SegmentedRow
 import de.kevke.servercontrol.ui.theme.CornerRadius
 import de.kevke.servercontrol.ui.theme.LineIcons
 import de.kevke.servercontrol.ui.theme.LocalAppColors
+import java.time.Instant
+import java.time.ZoneId
+import java.time.ZonedDateTime
+import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 private val RANGE_KEYS = listOf("day", "week", "month", "quarter", "year")
@@ -49,7 +53,9 @@ fun BillingScreen(vm: AppViewModel) {
     ) {
         SegmentedRow(
             options = RANGE_LABELS.take(3),
-            selectedIndex = rangeIndex.coerceAtMost(2),
+            // -1 leaves the whole row unhighlighted while the choice
+            // lives in the second row.
+            selectedIndex = if (rangeIndex <= 2) rangeIndex else -1,
             onSelect = { rangeIndex = it },
             modifier = Modifier.fillMaxWidth(),
         )
@@ -183,6 +189,56 @@ fun BillingScreen(vm: AppViewModel) {
             }
         }
 
+        if (billing.sessions.isNotEmpty()) {
+            Spacer(Modifier.height(24.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("SESSIONS", style = MaterialTheme.typography.labelSmall,
+                     color = c.onMuted, modifier = Modifier.weight(1f))
+                Text("${billing.sessions.size}",
+                     style = MaterialTheme.typography.labelSmall, color = c.onMuted)
+            }
+            Spacer(Modifier.height(12.dp))
+
+            billing.sessions.forEach { session ->
+                Panel(Modifier.padding(bottom = 10.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text(sessionLabel(session.from, session.to),
+                                 style = MaterialTheme.typography.bodyLarge,
+                                 color = c.onBackground)
+                            Text(duration(session.uptimeSeconds),
+                                 style = MaterialTheme.typography.bodyMedium,
+                                 color = c.onMuted)
+                        }
+                        Text("${money(session.totalEur)} EUR",
+                             style = MaterialTheme.typography.titleMedium,
+                             color = c.onBackground)
+                    }
+                    if (session.perPlayer.isEmpty()) {
+                        Spacer(Modifier.height(8.dp))
+                        Text("Niemand war drauf",
+                             style = MaterialTheme.typography.bodyMedium,
+                             color = c.onMuted)
+                    } else {
+                        Spacer(Modifier.height(10.dp))
+                        session.perPlayer.forEach { player ->
+                            Row(Modifier.fillMaxWidth().padding(vertical = 1.dp)) {
+                                Text(
+                                    aliases[player.steamId] ?: player.name,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = c.onMuted,
+                                    modifier = Modifier.weight(1f),
+                                )
+                                Text("${money(player.eur)} EUR",
+                                     style = MaterialTheme.typography.bodyMedium,
+                                     color = c.accent)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         Spacer(Modifier.height(20.dp))
 
         Panel {
@@ -253,6 +309,30 @@ private fun RenameDialog(
 }
 
 private fun money(value: Double) = String.format(Locale.GERMANY, "%.2f", value)
+
+/**
+ * "23.08., 09:15 – 11:24" from two RFC3339 stamps.
+ *
+ * The function answers in UTC; shifting to the phone's zone is what makes
+ * the times match when you remember the evening.
+ */
+private fun sessionLabel(from: String?, to: String?): String {
+    val start = localTime(from) ?: return "—"
+    val end = localTime(to)
+    val day = DAY.format(start)
+    return if (end != null && end.toLocalDate() == start.toLocalDate()) {
+        "$day ${CLOCK.format(start)} – ${CLOCK.format(end)}"
+    } else {
+        "$day ${CLOCK.format(start)}"
+    }
+}
+
+private fun localTime(raw: String?): ZonedDateTime? = raw?.let {
+    runCatching { Instant.parse(it).atZone(ZoneId.systemDefault()) }.getOrNull()
+}
+
+private val DAY: DateTimeFormatter = DateTimeFormatter.ofPattern("dd.MM.")
+private val CLOCK: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
 
 private fun duration(seconds: Long): String {
     val hours = seconds / 3600
