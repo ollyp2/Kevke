@@ -482,6 +482,20 @@ RE_LEAVE = re.compile(
     r"Unregistering client \d+ with steam id (\d{17})")
 
 
+def parse_log_time(raw):
+    """RFC3339 with any number of fractional digits, or None."""
+    if not raw:
+        return None
+    text = str(raw).replace("Z", "+00:00")
+    # Docker writes nanoseconds; fromisoformat only takes microseconds.
+    text = re.sub(r"\.(\d{6})\d+", r".\1", text)
+    try:
+        moment = datetime.fromisoformat(text)
+    except ValueError:
+        return None
+    return moment if moment.tzinfo else moment.replace(tzinfo=timezone.utc)
+
+
 def player_events(start, end):
     """(timestamp, steamId, name, "join"|"leave") from the container log."""
     filter_str = (
@@ -504,12 +518,24 @@ def player_events(start, end):
             body["pageToken"] = page_token
         result = api("logging", "v2").entries().list(body=body).execute()
         for entry in result.get("entries", []):
-            text = entry.get("textPayload") or ""
-            if not text:
-                payload = entry.get("jsonPayload") or {}
-                text = str(payload.get("message") or payload.get("log") or "")
-            moment = datetime.fromisoformat(
-                entry["timestamp"].replace("Z", "+00:00"))
+            payload = entry.get("jsonPayload") or {}
+            text = entry.get("textPayload") or str(
+                payload.get("message") or payload.get("log") or "")
+
+            # Docker stamps every line itself. The entry timestamp is only
+            # when the agent got around to reading the file, which collapses
+            # to a single instant the first time it tails an existing log —
+            # every span between events would come out as zero.
+            moment = parse_log_time(payload.get("time")) or parse_log_time(
+                entry.get("timestamp"))
+            if moment is None:
+                continue
+
+            # The query bounds ingestion time; a backfilled line can carry a
+            # Docker timestamp from well outside the window we were asked
+            # about, so bound it again on the time that actually matters.
+            if not (start <= moment <= end):
+                continue
 
             match = RE_JOIN.search(text)
             if match:
