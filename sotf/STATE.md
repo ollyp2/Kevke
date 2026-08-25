@@ -288,6 +288,35 @@ Dokumentation gesucht wird. **Erst suchen, dann schreiben.**
 **„Bauanimationen überspringen" gibt es auf dem Dedicated Server
 nicht.** Es existiert kein solcher Schlüssel.
 
+**Die Welt führt ihre eigene Kopie der Regeln, und die gewinnt.** Das war
+die Ursache hinter wochenlangem Rätselraten. In `dedicatedserver.cfg`
+gibt es zwei Blöcke, die sich völlig verschieden verhalten:
+
+- `GameSettings` greift auf jeder Welt, auch auf einer laufenden.
+  `Structure.Damage: false` hat funktioniert — als einziges.
+- `CustomGameModeSettings` wird gelesen und dann ignoriert, weil die
+  Welt ihre Regeln aus dem Spielstand zieht.
+
+Diese Kopie liegt in `GameSetupSaveData.json` innerhalb von
+`SaveData.zip`, als JSON in einen String kodiert, der wiederum in JSON
+steht:
+
+```
+{"Version":"0.0.0","Data":{"GameSetup":"{\"_settings\":[
+  {\"Name\":\"Mode\",\"SettingType\":3,\"StringValue\":\"Hard\"}, …]}"}}
+```
+
+Dort stand `Mode: "Hard"` — deshalb konnte die Config sagen was sie
+wollte. `sotf/config/apply-world-settings.py` schreibt diese Liste um;
+danach funktionierten Container-Respawns sofort.
+
+Nebenbei erklärt dieselbe Liste, warum Wild knapp war: der Hard-Modus
+hatte `AnimalSpawnRate` auf `LOW` gesetzt.
+
+Wertformat: Booleans tragen `BoolValue` und kein `SettingType`, Strings
+tragen `SettingType: 3` und `StringValue`. Beides von der Welt
+abgeschaut, nicht erfunden. `UID` niemals anfassen.
+
 **Jeder CI-Build hatte bis Build 8 einen anderen Signaturschlüssel.**
 `assembleDebug` signiert mit `~/.android/debug.keystore`, und der Runner
 erzeugt den bei jedem Lauf neu. Nachgewiesen an den veröffentlichten
@@ -321,6 +350,7 @@ Raten kostet eine Runde.
 | Firewall nur UDP | ✅ |
 | Statische IP | ✅ reserviert |
 | Kosten gesamt, aus Monitoring | ✅ |
+| Container-Respawns über den Spielstand | ✅ im Spiel bestätigt |
 | Aufteilung pro Spieler | ✅ nachgerechnet: Tagesansicht Kevke 4111 s allein = 0,19 € plus 0,17 € nicht zugeordnet = 0,37 € gesamt |
 | Sessions | ⏳ Code deployed, in echten Daten noch nicht angesehen |
 | Backup anlegen / listen | ⏳ |
@@ -415,12 +445,21 @@ entweder Befehl anzeigen mit Kopierknopf und im Spiel per F1 eingeben,
 oder RedLoader-Mod — anderes Image, mehr Wartung. **Mit Kevke klären, ob
 das den Aufwand wert ist.**
 
-**C3. `CustomGameModeSettings` greifen nicht.** Auf der bestehenden Welt
-bleibt `_settings` leer. Der `GameSettings`-Block wirkt immer, der
-`CustomGameModeSettings`-Block nur bei `GameMode: "Custom"` **und** nur
-auf einer neu erzeugten Welt. Für die laufende Welt ist das damit
-vermutlich gar nicht lösbar, ohne sie neu anzulegen — das ist zu
-bestätigen, bevor jemand weiter daran schraubt.
+**C3. `CustomGameModeSettings` greifen nicht.** ✅ gelöst am 2026-08-25,
+siehe Abschnitt 4. Die Regeln stehen im Spielstand, nicht in der Config.
+`apply-world-settings.py` schreibt sie dorthin; Container-Respawns
+funktionieren seitdem.
+
+**C5. Hält die Änderung einen Neustart aus?** Nach dem ersten Serverlauf
+stand `Mode` wieder auf `Hard`, obwohl die Regeln wirken. Der Server hat
+die Datei also angefasst. Zu prüfen, ob die hinzugefügten
+`GameSetting.…`-Einträge erhalten bleiben. Verschwinden sie, muss die
+Function sie nach jedem Start neu setzen.
+
+**C6. Container tot heißt VM läuft ewig.** Der Idle-Shutdown setzt seinen
+Zähler zurück, wenn der Container nicht läuft (`cpu == -1`). Beim
+bewussten Stoppen ist das richtig — stirbt der Container aber dauerhaft,
+läuft die VM auf Kosten weiter, ohne dass jemand spielen kann.
 
 **C4. Spielerdaten reichen nur bis zum Agent-Start zurück.** Vor dem
 Zeitpunkt, an dem der Ops Agent zu senden begann, gibt es keine

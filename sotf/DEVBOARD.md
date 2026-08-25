@@ -150,6 +150,13 @@ ihm von außen Befehle zu schicken. Realistisch:
 
 ## Changelog
 
+- **2026-08-25** — Ursache gefunden, warum `CustomGameModeSettings` nie
+  wirkten: die Welt führt ihre eigene Regelkopie in
+  `GameSetupSaveData.json` im Spielstand, und dort stand `Mode: "Hard"`.
+  `config/apply-world-settings.py` schreibt diese Liste um — Container-
+  Respawns funktionieren seitdem. `config/apply-game-settings.sh`
+  schreibt daneben die Server-Config, wo `GameSettings` weiterhin der
+  einzige Block ist, der auf einer laufenden Welt etwas bewirkt.
 - **2026-08-23** — Spieleridentität aus dem Container-Log statt aus der
   Steam-Query, Kostenaufteilung nach Kevkes Zerlegung, Sessions und
   umschaltbare Zeiträume. Fester Signaturschlüssel für die CI, weil
